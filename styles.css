@@ -1239,14 +1239,219 @@ body {
   letter-spacing: 0.3px;
 }
 
-@media (max-width: 640px) {
-  #hud-top-left, #hud-top-right {
-    top: 12px;
-    padding: 12px 14px;
-    min-width: 0;
+/* ---------------------------------------------------------------------------
+ * MOBILE LAYOUT (touch devices, narrow viewports).
+ * Scoped strictly: only active when the viewport is ≤932px AND pointer is
+ * coarse (touch). Desktop browsers, including desktop Safari, never match
+ * this query no matter the window size.
+ * --------------------------------------------------------------------------- */
+@media (max-width: 932px) and (pointer: coarse) {
+  /* Use dynamic viewport units to dodge the iOS Safari URL-bar height jump. */
+  html, body { height: 100dvh; }
+  #universe {
+    width: 100dvw;
+    height: 100dvh;
   }
-  #hud-top-left { left: 12px; }
-  #hud-top-right { right: 12px; max-width: 180px; }
-  #discovery-banner { padding: 20px 28px; }
-  #discovery-banner .era-title { font-size: 18px; }
+  #ui {
+    inset: 0;
+    /* Allow safe-area padding without affecting absolute children. */
+  }
+
+  /* ---- Top-left panel ---- */
+  #hud-left {
+    top: max(8px, env(safe-area-inset-top, 0px));
+    left: max(8px, env(safe-area-inset-left, 0px));
+    gap: 8px;
+    max-width: 58vw;
+  }
+  #hud-top-left {
+    min-width: 0;
+    padding: 10px 12px;
+    pointer-events: auto;
+  }
+  #hud-top-left .era-line { font-size: 13px; margin-bottom: 8px; }
+  #hud-top-left .era-line.year-line { margin-bottom: 6px; }
+  #hud-top-left .era-line.lens-line.revealed { margin-bottom: 6px; max-height: 48px; }
+  #hud-top-left #year-count { font-size: 18px; }
+  #hud-top-left #era-name { font-size: 14px; }
+  #hud-top-left #lens-name { font-size: 12px; }
+  #hud-top-left .era-line .label { font-size: 9px; margin-bottom: 2px; letter-spacing: 1.2px; }
+  #hud-top-left .stat-line { font-size: 12px; padding: 3px 0; }
+  #hud-top-left .stat-line .label { font-size: 9px; letter-spacing: 1.2px; }
+
+  /* Stats inside top-left: collapsed by default, tap "Stats" to expand. */
+  #hud-top-left .stat-body { display: none; margin-top: 4px; }
+  #hud-top-left.stats-expanded .stat-body { display: block; }
+  #hud-top-left .stat-toggle {
+    display: block;
+    margin-top: 8px;
+    background: transparent;
+    border: 1px solid rgba(184, 164, 255, 0.18);
+    color: rgba(255, 255, 255, 0.55);
+    font-family: inherit;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  #hud-top-left .stat-toggle::after { content: " ▾"; opacity: 0.6; }
+  #hud-top-left.stats-expanded .stat-toggle::after { content: " ▴"; }
+
+  #hud-instruments,
+  #hud-unlocks {
+    min-width: 0;
+    padding: 10px 12px;
+    pointer-events: auto;
+  }
+  #hud-instruments .unlocks-title,
+  #hud-unlocks .unlocks-title { margin-bottom: 6px; }
+  #instruments-list li { font-size: 12px; padding: 5px 0 5px 10px; gap: 6px; }
+  #instruments-list .instrument-name { letter-spacing: 0.5px; }
+
+  /* ---- Top-right panel ---- */
+  #hud-top-right {
+    top: max(8px, env(safe-area-inset-top, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    max-width: 42vw;
+    min-width: 0;
+    max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 180px);
+    gap: 8px;
+  }
+  #hud-laws,
+  #hud-catalog {
+    padding: 10px 12px;
+    pointer-events: auto;
+  }
+  .laws-title,
+  .catalog-title { margin-bottom: 6px; font-size: 9px; letter-spacing: 1.2px; }
+  #laws-list li { font-size: 11px; padding: 4px 8px; margin: 4px 0; }
+  #catalog-list li { font-size: 11px; }
+  .laws-empty, .catalog-empty { font-size: 11px; }
+
+  /* ---- Collapsible panels: body hidden until expanded ---- */
+  .panel.is-collapsible .panel-body { display: none; }
+  .panel.is-collapsible.is-expanded .panel-body { display: block; }
+  .panel.is-collapsible .panel-header {
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    position: relative;
+    padding-right: 18px;
+    /* tap target height */
+    min-height: 22px;
+    display: flex;
+    align-items: center;
+    margin-bottom: 0;
+  }
+  .panel.is-collapsible .panel-header::after {
+    content: "▾";
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: rgba(184, 164, 255, 0.55);
+    transition: transform 0.18s ease;
+  }
+  .panel.is-collapsible.is-expanded .panel-header::after {
+    transform: translateY(-50%) rotate(180deg);
+  }
+  .panel.is-collapsible.is-expanded .panel-header { margin-bottom: 8px; }
+
+  /* Catalog: when expanded, give it its own scroll area capped to viewport. */
+  #hud-catalog.is-collapsible.is-expanded .panel-body {
+    display: flex;
+    flex-direction: column;
+    max-height: 40dvh;
+  }
+  #hud-catalog #catalog-list {
+    max-height: 40dvh;
+  }
+  #hud-catalog .cat-title {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: 12px;
+  }
+  #hud-catalog .cat-sub { font-size: 10px; }
+
+  /* ---- Whisper: positioned in lower-middle band, well below era banner ---- */
+  #whisper {
+    top: auto;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 26dvh);
+    left: 50%;
+    transform: translate(-50%, 0);
+    font-size: 14px;
+    line-height: 1.4;
+    max-width: 84vw;
+    padding: 0 12px;
+  }
+
+  /* ---- Era discovery banner: smaller, positioned above the whisper band ---- */
+  #discovery-banner {
+    padding: 16px 20px;
+    max-width: 84vw;
+    top: 35%;
+  }
+  #discovery-banner .title { font-size: 9px; letter-spacing: 2.5px; margin-bottom: 6px; }
+  #discovery-banner .era-title { font-size: 17px; margin-bottom: 8px; }
+  #discovery-banner .law { font-size: 12px; }
+
+  /* ---- Bottom action buttons: respect safe area, tighter stack ---- */
+  #reset-btn {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    right: max(10px, env(safe-area-inset-right, 0px));
+    width: 38px; height: 38px;
+  }
+  #settings-btn {
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+    right: max(10px, env(safe-area-inset-right, 0px));
+    width: 38px; height: 38px;
+  }
+  #mute-btn {
+    bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+    right: max(10px, env(safe-area-inset-right, 0px));
+    width: 38px; height: 38px;
+  }
+  #mute-btn svg { width: 16px; height: 16px; }
+
+  /* Hide the bottom hint on mobile: it eats space and overlaps action buttons. */
+  #hud-bottom { display: none; }
+
+  /* ---- Settings popup: bottom-anchored drawer with internal scroll ---- */
+  #settings-panel {
+    bottom: calc(152px + env(safe-area-inset-bottom, 0px));
+    right: max(10px, env(safe-area-inset-right, 0px));
+    left: max(10px, env(safe-area-inset-left, 0px));
+    min-width: 0;
+    max-width: none;
+    max-height: 55dvh;
+    overflow-y: auto;
+  }
+
+  /* ---- Macro inspector + context menu: tighter on small screens ---- */
+  #macro-inspector {
+    max-width: 60vw;
+    font-size: 12px;
+  }
+  #macro-context-menu {
+    max-width: 70vw;
+  }
+
+  /* ---- Reduce side margins so panels fit without clipping ---- */
+  .panel { padding: 10px 12px; border-radius: 12px; }
+}
+
+/* ---------------------------------------------------------------------------
+ * MOBILE — landscape phones (short height). Stack laws + catalog horizontally
+ * and put top-left in compact mode.
+ * --------------------------------------------------------------------------- */
+@media (max-height: 500px) and (pointer: coarse) {
+  #hud-left { max-width: 40vw; }
+  #hud-top-right { max-width: 40vw; }
+  #whisper { bottom: calc(env(safe-area-inset-bottom, 0px) + 20dvh); font-size: 13px; }
+  #discovery-banner { top: 50%; padding: 12px 18px; }
+  #discovery-banner .era-title { font-size: 15px; }
 }

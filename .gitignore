@@ -18,3 +18,8 @@ npm-debug.log*
 # Local env
 .env
 .env.local
+
+# Local-only Playwright harness for mobile validation (vanilla-forever project)
+tests/
+package.json
+package-lock.json

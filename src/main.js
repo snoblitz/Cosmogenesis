@@ -9,6 +9,7 @@ import { Audio }      from './audio.js';
 import { loadGame, saveGame, clearSave, setFreshUntil } from './save.js';
 import { ERAS, MIN_ZOOM, FIRST_LIGHT_ERA } from './eras.js';
 import { MACRO_CRADLE_THRESHOLD } from './simulation.js';
+import './mobile.js';
 
 const canvas = document.getElementById('universe');
 const sim    = new Simulation();
