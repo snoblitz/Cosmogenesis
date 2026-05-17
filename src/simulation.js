@@ -2,7 +2,7 @@
 // Holds particles + macro-objects, runs the tick loop, and gates which
 // physical laws are active based on the current era level.
 
-import { applyAttraction, applyMacroPull, applyMacroMutualPull, tryMerges } from './physics.js';
+import { applyAttraction, applyMacroPull, applyMacroMutualPull, tryMerges, MERGE_RETENTION } from './physics.js';
 
 export const GRID_SIZE = 90;            // spatial partition cell size (world px)
 export const MAX_PARTICLES = 1500;      // hard performance ceiling
@@ -243,11 +243,11 @@ export class Simulation {
         if (dist > a.r + b.r) continue;
         const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
         if (Math.hypot(dvx, dvy) > 4) continue;
-        const tm = a.mass + b.mass;
-        a.x  = (a.x  * a.mass + b.x  * b.mass) / tm;
-        a.y  = (a.y  * a.mass + b.y  * b.mass) / tm;
-        a.vx = (a.vx * a.mass + b.vx * b.mass) / tm;
-        a.vy = (a.vy * a.mass + b.vy * b.mass) / tm;
+        const tm = (a.mass + b.mass) * MERGE_RETENTION;
+        a.x  = (a.x  * a.mass + b.x  * b.mass) / (a.mass + b.mass);
+        a.y  = (a.y  * a.mass + b.y  * b.mass) / (a.mass + b.mass);
+        a.vx = (a.vx * a.mass + b.vx * b.mass) / (a.mass + b.mass);
+        a.vy = (a.vy * a.mass + b.vy * b.mass) / (a.mass + b.mass);
         a.mass = tm;
         a.r = Math.max(8, Math.cbrt(tm) * 4.5);
         a.absorbed += b.absorbed;

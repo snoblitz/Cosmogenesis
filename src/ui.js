@@ -13,7 +13,7 @@ const INFO_TOOLTIPS = {
     title: 'Matter',
     body: [
       'What the universe presently holds.',
-      'Mass is conserved when particles merge, but the cosmos can only carry so much at once. The oldest, smallest things dissipate to make room for the new. A kind of entropy you can watch happen.'
+      'Each binding releases a fraction of mass as radiation. Matter therefore lags behind Potential: the cosmos can never quite hold all you have offered it.'
     ]
   },
   structures: {

@@ -6,6 +6,11 @@ const G = 0.55;                       // gravitational-ish constant for particle
 const SOFTEN_SQ = 16;                 // softening to avoid singularities (4^2)
 const ATTRACTION_RANGE_SQ = 90 * 90;  // tied to grid cell size
 const MERGE_VEL_THRESHOLD = 5.5;      // relative speed below which a collision merges
+// Fraction of combined mass retained per merge. Each binding event releases
+// a little mass as radiation (binding energy). 4% loss reads as a meaningful
+// gap between Potential (taps you've made) and Matter (what the cosmos
+// currently holds) after sustained play, without feeling punishing.
+export const MERGE_RETENTION = 0.96;
 const MACRO_G = 4.0;                  // macro-objects pull much harder
 const MACRO_RANGE_SQ = 1300 * 1300;     // long-range macro influence on particles
 
@@ -135,11 +140,11 @@ export function tryMerges(particles, grid, cols, rows, cellSize) {
         const dvx = q.vx - p.vx;
         const dvy = q.vy - p.vy;
         if (dvx * dvx + dvy * dvy > MERGE_VEL_THRESHOLD * MERGE_VEL_THRESHOLD) continue;
-        const tm = p.mass + q.mass;
-        p.x  = (p.x  * p.mass + q.x  * q.mass) / tm;
-        p.y  = (p.y  * p.mass + q.y  * q.mass) / tm;
-        p.vx = (p.vx * p.mass + q.vx * q.mass) / tm;
-        p.vy = (p.vy * p.mass + q.vy * q.mass) / tm;
+        const tm = (p.mass + q.mass) * MERGE_RETENTION;
+        p.x  = (p.x  * p.mass + q.x  * q.mass) / (p.mass + q.mass);
+        p.y  = (p.y  * p.mass + q.y  * q.mass) / (p.mass + q.mass);
+        p.vx = (p.vx * p.mass + q.vx * q.mass) / (p.mass + q.mass);
+        p.vy = (p.vy * p.mass + q.vy * q.mass) / (p.mass + q.mass);
         p.mass = tm;
         p.r = 2.2 * Math.cbrt(p.mass);
         // Hues drift toward gold as mass grows. Lerp around the SHORT arc
