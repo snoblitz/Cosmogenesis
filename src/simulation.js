@@ -155,14 +155,27 @@ export class Simulation {
       this.particles = this.particles.filter(p => p.alive);
     }
 
-    // 5. Macro promotion (era 2+)
-    if (this.eraLevel >= 2 && this.macros.length < MAX_MACROS) {
+    // 5. Macro promotion (era 2+). Particles that reach the promotion mass
+    // INSIDE an existing macro's body are silently accreted rather than
+    // promoted, since they would just be absorbed the next tick anyway and
+    // spam the catalog history with phantom Structure events. Free-space
+    // promotions still happen normally.
+    if (this.eraLevel >= 2) {
       for (let i = this.particles.length - 1; i >= 0; i--) {
         const p = this.particles[i];
-        if (p.mass >= MACRO_MASS_THRESHOLD) {
+        if (p.mass < MACRO_MASS_THRESHOLD) continue;
+        const host = this._macroContaining(p.x, p.y);
+        if (host) {
+          const combined = host.mass + p.mass;
+          host.mass = combined * MERGE_RETENTION;
+          host.r = Math.max(8, Math.cbrt(host.mass) * 4.5);
+          host.absorbed += Math.round(p.mass);
+          this.particles.splice(i, 1);
+          continue;
+        }
+        if (this.macros.length < MAX_MACROS) {
           this.macros.push(this._promoteToMacro(p));
           this.particles.splice(i, 1);
-          if (this.macros.length >= MAX_MACROS) break;
         }
       }
     }
@@ -208,6 +221,15 @@ export class Simulation {
     if (o.y < margin)     { o.y = margin;     o.vy = Math.abs(o.vy) * 0.45; }
     if (o.x > w - margin) { o.x = w - margin; o.vx = -Math.abs(o.vx) * 0.45; }
     if (o.y > h - margin) { o.y = h - margin; o.vy = -Math.abs(o.vy) * 0.45; }
+  }
+
+  _macroContaining(x, y) {
+    for (const m of this.macros) {
+      const dx = m.x - x;
+      const dy = m.y - y;
+      if (dx * dx + dy * dy < m.r * m.r) return m;
+    }
+    return null;
   }
 
   _promoteToMacro(p) {
