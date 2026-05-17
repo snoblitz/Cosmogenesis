@@ -1013,10 +1013,46 @@ body {
   transform: rotate(45deg);
 }
 
+#mute-btn {
+  position: absolute;
+  bottom: 120px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(8, 8, 20, 0.5);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  font-family: inherit;
+}
+#mute-btn:hover {
+  color: #fff;
+  border-color: rgba(184, 164, 255, 0.5);
+}
+#mute-btn.muted {
+  color: rgba(255, 140, 160, 0.9);
+  border-color: rgba(255, 120, 140, 0.55);
+  background: rgba(40, 8, 16, 0.6);
+}
+#mute-btn.muted:hover {
+  color: #fff;
+  border-color: rgba(255, 160, 180, 0.85);
+}
+
 /* Floating global settings popup, anchored bottom-right above the buttons. */
 #settings-panel {
   position: absolute;
-  bottom: 124px;
+  bottom: 172px;
   right: 24px;
   min-width: 260px;
   max-width: 320px;

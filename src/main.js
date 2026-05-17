@@ -481,10 +481,34 @@ document.addEventListener('visibilitychange', () => {
 
 window.__cosmogenesis_disableSave = () => { savingDisabled = true; };
 
-// Keyboard: M to toggle audio mute
+// --- Mute button (bottom-right, above settings) ---
+const muteBtn = document.getElementById('mute-btn');
+function syncMuteBtn() {
+  if (!muteBtn) return;
+  const muted = !!audio.muted;
+  muteBtn.classList.toggle('muted', muted);
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+  muteBtn.title = muted ? 'Unmute audio (M)' : 'Mute audio (M)';
+  muteBtn.setAttribute('aria-pressed', muted ? 'true' : 'false');
+}
+syncMuteBtn();
+if (muteBtn) {
+  muteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    audio.toggleMute();
+    syncMuteBtn();
+  });
+  muteBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+}
+
+// Keyboard: M to toggle audio mute (keep the shortcut; sync the button afterward).
 window.addEventListener('keydown', (e) => {
   if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    // Ignore when typing in a text input (e.g. the macro rename field).
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     audio.toggleMute();
+    syncMuteBtn();
   }
 });
 
