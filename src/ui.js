@@ -1060,7 +1060,7 @@ export class UI {
     const era = state.currentEra();
     if (this.elEra.textContent !== era.name) this.elEra.textContent = era.name;
     if (this.elYear) {
-      const yearStr = fmt(state.cosmicYear || 0);
+      const yearStr = (state.cosmicYear || 0).toLocaleString();
       if (this.elYear.textContent !== yearStr) this.elYear.textContent = yearStr;
     }
     if (this.elHint.textContent !== era.hint) this.elHint.textContent = era.hint;
