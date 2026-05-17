@@ -1028,11 +1028,10 @@ export class UI {
 
       const expanded = this._catalogExpanded.has(m.id);
       li.classList.toggle('is-expanded', expanded);
+      // Only re-render the timeline when expanded (when collapsed the CSS
+      // hides it via .is-expanded, so its contents don't matter).
       if (expanded) {
-        timelineEl.hidden = false;
         this._renderTimelineInto(timelineEl, m);
-      } else {
-        timelineEl.hidden = true;
       }
 
       // Maintain sort order in the DOM.
@@ -1082,7 +1081,6 @@ export class UI {
 
     const timelineEl = document.createElement('div');
     timelineEl.className = 'cat-timeline';
-    timelineEl.hidden = true;
 
     li.appendChild(rowMain);
     li.appendChild(timelineEl);

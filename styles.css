@@ -906,9 +906,12 @@ body {
   margin-top: 8px;
   padding: 6px 0 2px 8px;
   border-left: 1px solid rgba(184, 164, 255, 0.22);
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: 6px;
+}
+#catalog-list li.is-expanded .cat-timeline {
+  display: flex;
 }
 #catalog-list li[data-kind="cradle"] .cat-timeline {
   border-left-color: rgba(255, 212, 155, 0.28);
