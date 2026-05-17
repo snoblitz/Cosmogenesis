@@ -6,9 +6,11 @@
 
 **Version:** v0.2 (May 17, 2026)
 
+**Play it:** https://snoblitz.github.io/Cosmogenesis/
+
 ---
 
-## Run it
+## Run it locally
 
 ```bash
 node server.js
@@ -17,6 +19,8 @@ node server.js
 Open http://localhost:8001
 
 No build step. No `npm install`. Pure ES modules + Canvas 2D + Web Audio.
+
+The repo is also a fully static site — any plain HTTP file server works. GitHub Pages serves it directly from `main` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 ---
 
