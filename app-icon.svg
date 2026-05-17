@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="75%">
+      <stop offset="0%"  stop-color="#0e0b30" stop-opacity="1"/>
+      <stop offset="55%" stop-color="#050315" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="1"/>
+    </radialGradient>
+
+    <radialGradient id="filament" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#c7b6ff" stop-opacity="0.55"/>
+      <stop offset="60%"  stop-color="#5a3fbf" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="10%"  stop-color="#fff3c2" stop-opacity="0.98"/>
+      <stop offset="28%"  stop-color="#ffd28a" stop-opacity="0.85"/>
+      <stop offset="50%"  stop-color="#c7b6ff" stop-opacity="0.55"/>
+      <stop offset="78%"  stop-color="#5a3fbf" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="40%"  stop-color="#ffe6a8" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#ffd28a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Full-bleed background. iOS adds its own corner mask. -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- Faint cosmic web filament suggestion -->
+  <ellipse cx="256" cy="256" rx="220" ry="60" fill="url(#filament)" transform="rotate(-22 256 256)"/>
+  <ellipse cx="256" cy="256" rx="180" ry="44" fill="url(#filament)" transform="rotate(34 256 256)"/>
+
+  <!-- Distant stars scattered across the void -->
+  <g fill="#ffffff">
+    <circle cx="64"  cy="92"  r="2.2" opacity="0.85"/>
+    <circle cx="120" cy="58"  r="1.4" opacity="0.55"/>
+    <circle cx="190" cy="110" r="1.2" opacity="0.45"/>
+    <circle cx="420" cy="84"  r="1.8" opacity="0.7"/>
+    <circle cx="460" cy="160" r="1.3" opacity="0.5"/>
+    <circle cx="384" cy="424" r="1.6" opacity="0.6"/>
+    <circle cx="92"  cy="432" r="2.0" opacity="0.75"/>
+    <circle cx="48"  cy="300" r="1.2" opacity="0.5"/>
+    <circle cx="448" cy="356" r="1.1" opacity="0.45"/>
+    <circle cx="156" cy="382" r="1.4" opacity="0.55"/>
+    <circle cx="320" cy="56"  r="1.6" opacity="0.6"/>
+  </g>
+  <g fill="#c7b6ff">
+    <circle cx="100" cy="178" r="2.4" opacity="0.85"/>
+    <circle cx="396" cy="220" r="1.8" opacity="0.7"/>
+    <circle cx="208" cy="448" r="2.0" opacity="0.75"/>
+    <circle cx="436" cy="468" r="1.4" opacity="0.55"/>
+  </g>
+  <g fill="#ffd49b">
+    <circle cx="304" cy="412" r="2.0" opacity="0.8"/>
+    <circle cx="80"  cy="240" r="1.4" opacity="0.6"/>
+  </g>
+
+  <!-- Igniting cradle: halo + bright core -->
+  <circle cx="256" cy="256" r="200" fill="url(#halo)"/>
+  <circle cx="256" cy="256" r="48"  fill="url(#core)"/>
+  <circle cx="256" cy="256" r="14"  fill="#ffffff"/>
+</svg>
