@@ -168,6 +168,22 @@ export class Simulation {
     if (this.macros.length >= 2 && this.eraLevel >= 2) {
       this._mergeMacros();
     }
+
+    // 7. Auto-name promotion: a Structure that has grown past the Cradle
+    // threshold (via macro-macro merges) should reflect its new status. We
+    // only rewrite names that still match the exact original auto-name; any
+    // player-renamed body keeps the name they gave it.
+    this._promoteAutoNames();
+  }
+
+  _promoteAutoNames() {
+    for (const m of this.macros) {
+      if (m.mass < MACRO_CRADLE_THRESHOLD) continue;
+      if (typeof m.bornAtS !== 'number') continue;
+      const suffix = m.bornAtS * YEARS_PER_SECOND;
+      const oldAuto = `Structure${suffix}`;
+      if (m.name === oldAuto) m.name = `Cradle${suffix}`;
+    }
   }
 
   _bounceBounds(o, margin) {
