@@ -689,16 +689,17 @@ export class UI {
     }
     el.setAttribute('data-kind', data.kind);
 
-    const named = data.name && data.name.length > 0;
+    // Names are auto-assigned at creation and can be edited by the player.
+    // Always write + show, never just hide, so we can never display a stale
+    // value from a previous macro.
+    const displayName = (data.name && data.name.length > 0)
+      ? data.name
+      : (data.kind === 'cradle' ? 'Cradle' : 'Structure');
     if (this.elInspectorName) {
-      if (named) {
-        if (this.elInspectorName.textContent !== data.name) {
-          this.elInspectorName.textContent = data.name;
-        }
-        this.elInspectorName.hidden = false;
-      } else {
-        this.elInspectorName.hidden = true;
+      if (this.elInspectorName.textContent !== displayName) {
+        this.elInspectorName.textContent = displayName;
       }
+      this.elInspectorName.hidden = false;
     }
 
     const massStr = Math.round(data.mass).toString();
@@ -843,6 +844,8 @@ export class UI {
     if (!menu || !opts) return;
 
     this._contextMenuMacroId = opts.macroId;
+    this._contextMenuMacroName = opts.name || '';
+    this._contextMenuMacroKind = opts.kind || 'structure';
     this._contextMenuOpen = true;
     this._contextMenuMode = 'actions';
 
@@ -925,12 +928,10 @@ export class UI {
     if (this.elContextMenuActions) this.elContextMenuActions.hidden = true;
     if (this.elContextMenuRename)  this.elContextMenuRename.hidden  = false;
     if (this.elContextMenuInput) {
-      // Pre-fill with current name if known (read from inspector title since
-      // it stays in sync, or fall back to empty).
-      const currentName = (this.elInspectorName && !this.elInspectorName.hidden)
-        ? this.elInspectorName.textContent || ''
-        : '';
-      this.elContextMenuInput.value = currentName;
+      // Pre-fill with the name we opened the menu for (stashed from opts),
+      // never from the inspector DOM. The inspector might be showing a
+      // different macro by the time the menu is interacted with.
+      this.elContextMenuInput.value = this._contextMenuMacroName || '';
       requestAnimationFrame(() => {
         try {
           this.elContextMenuInput.focus();
@@ -1024,14 +1025,12 @@ export class UI {
       const subEl   = li.lastChild;
       const titleText = m.name && m.name.length
         ? m.name
-        : `${kind === 'cradle' ? 'Cradle' : 'Structure'} #${m.id}`;
+        : (kind === 'cradle' ? 'Cradle' : 'Structure');
       if (titleEl.textContent !== titleText) titleEl.textContent = titleText;
 
       const kindLabel = kind === 'cradle' ? 'Cradle' : 'Structure';
       const massStr = fmt(Math.round(m.mass));
-      const subText = m.name && m.name.length
-        ? `${kindLabel} \u00b7 ${massStr} mass`
-        : `${massStr} mass`;
+      const subText = `${kindLabel} \u00b7 ${massStr} mass`;
       if (subEl.textContent !== subText) subEl.textContent = subText;
 
       // Maintain sort order in the DOM.

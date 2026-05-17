@@ -22,6 +22,7 @@ export class Simulation {
     this.eraLevel = 0;       // 0 none, 1 attraction, 2 merging+macros, 3 strong macro pull
     this.totalMerges = 0;
     this.totalSpawned = 0;
+    this.totalElapsedS = 0;  // simulation timeline in seconds (used for auto-naming)
   }
 
   setBounds(w, h) { this.bounds.w = w; this.bounds.h = h; }
@@ -92,10 +93,13 @@ export class Simulation {
 
   tick(dt) {
     if (dt <= 0 || this.particles.length === 0 && this.macros.length === 0) {
-      // Still age particles for fade-in even with no physics
+      // Still age particles for fade-in even with no physics, and keep the
+      // timeline ticking so auto-names reflect real elapsed time.
       for (const p of this.particles) p.age += dt;
+      this.totalElapsedS += dt;
       return;
     }
+    this.totalElapsedS += dt;
 
     const { grid, cols, rows } = this._buildGrid();
 
@@ -171,6 +175,12 @@ export class Simulation {
   }
 
   _promoteToMacro(p) {
+    // Auto-name: kind reflects mass at creation, suffix is the current
+    // simulation timeline in seconds. Two macros born in the same second
+    // would collide; that's rare enough to accept, and the player can
+    // rename anything via the context menu.
+    const bornAtS = Math.max(0, Math.floor(this.totalElapsedS));
+    const kind = p.mass >= MACRO_CRADLE_THRESHOLD ? 'Cradle' : 'Structure';
     return {
       id: this.nextId++,
       x: p.x, y: p.y,
@@ -181,16 +191,29 @@ export class Simulation {
       age: 0,
       pulse: Math.random() * Math.PI * 2,
       absorbed: Math.round(p.mass),
-      name: null,
+      bornAtS,
+      name: `${kind}${bornAtS}`,
       tracked: false
     };
+  }
+
+  // Build the auto-name from the macro's birth context (or a sensible
+  // approximation for legacy macros without bornAtS).
+  _autoNameFor(m) {
+    const bornAtS = (typeof m.bornAtS === 'number')
+      ? m.bornAtS
+      : Math.max(0, Math.floor(this.totalElapsedS - (m.age || 0)));
+    const kind = (m.mass || 0) >= MACRO_CRADLE_THRESHOLD ? 'Cradle' : 'Structure';
+    return `${kind}${bornAtS}`;
   }
 
   setMacroName(id, name) {
     for (const m of this.macros) {
       if (m.id !== id) continue;
       const trimmed = (name == null) ? '' : String(name).trim().slice(0, 40);
-      m.name = trimmed.length ? trimmed : null;
+      // Empty input reverts to the auto-name rather than leaving the body
+      // unnamed. There's no longer a meaningful "no name" state.
+      m.name = trimmed.length ? trimmed : this._autoNameFor(m);
       return true;
     }
     return false;
@@ -239,13 +262,15 @@ export class Simulation {
         id: m.id, x: m.x, y: m.y, vx: m.vx, vy: m.vy,
         mass: m.mass, r: m.r, hue: m.hue, age: m.age,
         pulse: m.pulse, absorbed: m.absorbed,
+        bornAtS: typeof m.bornAtS === 'number' ? m.bornAtS : 0,
         name: m.name || null,
         tracked: !!m.tracked
       })),
       nextId: this.nextId,
       eraLevel: this.eraLevel,
       totalMerges: this.totalMerges,
-      totalSpawned: this.totalSpawned
+      totalSpawned: this.totalSpawned,
+      totalElapsedS: this.totalElapsedS
     };
   }
 
@@ -256,5 +281,14 @@ export class Simulation {
     this.eraLevel     = d.eraLevel     || 0;
     this.totalMerges  = d.totalMerges  || 0;
     this.totalSpawned = d.totalSpawned || 0;
+    this.totalElapsedS = typeof d.totalElapsedS === 'number' ? d.totalElapsedS : 0;
+
+    // Backfill bornAtS + name for legacy macros saved before auto-naming.
+    for (const m of this.macros) {
+      if (typeof m.bornAtS !== 'number') {
+        m.bornAtS = Math.max(0, Math.floor(this.totalElapsedS - (m.age || 0)));
+      }
+      if (!m.name) m.name = this._autoNameFor(m);
+    }
   }
 }
