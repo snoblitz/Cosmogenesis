@@ -13,7 +13,7 @@ const MACRO_RANGE_SQ = 1300 * 1300;     // long-range macro influence on particl
 // Tuned conservatively after observing three-body chaos at higher coupling:
 // gentle constant, generous distance softening so close-spawning macros don't
 // detonate the existing web, and a hard velocity cap applied per tick.
-const MACRO_MUTUAL_G          = 1.5;
+const MACRO_MUTUAL_G          = 2.2;
 const MACRO_MUTUAL_RANGE_SQ   = 1400 * 1400;  // aligned with filament render range
 const MACRO_MUTUAL_SOFTEN_SQ  = 8100;          // ~90px softening, prevents singularity
 const MAX_MACRO_SPEED         = 12;

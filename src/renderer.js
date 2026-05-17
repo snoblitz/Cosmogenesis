@@ -439,8 +439,8 @@ export class Renderer {
     if (sim.macros.length < 2) return;
     const ctx = this.ctx;
     const now = performance.now();
-    const MIN_FILAMENT_RANGE = 800;            // shortest reach (lightest pairs)
-    const MAX_FILAMENT_RANGE = 2200;           // longest reach (heaviest pairs)
+    const MIN_FILAMENT_RANGE = 1100;           // shortest reach (lightest pairs)
+    const MAX_FILAMENT_RANGE = 2400;           // longest reach (heaviest pairs)
     const REVEAL_DURATION_MS = 1600;
     // Log-mass anchor points used for cold↔warm hue and range scaling.
     const MIN_LOG = Math.log10(140 + 1);       // ~ two minimum-mass macros
