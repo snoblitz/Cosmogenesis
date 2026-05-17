@@ -207,6 +207,16 @@ export class UI {
     this.elSettingsPanel = document.getElementById('settings-panel');
     this.elSettingsContent = document.getElementById('settings-content');
     this.elCanvas        = document.getElementById('universe');
+    this.elInspector     = document.getElementById('macro-inspector');
+    this.elInspectorKind = this.elInspector?.querySelector('.mi-kind') || null;
+    this.elInspectorMass = this.elInspector?.querySelector('[data-mi="mass"]') || null;
+    this.elInspectorAbs  = this.elInspector?.querySelector('[data-mi="absorbed"]') || null;
+    this.elInspectorAge  = this.elInspector?.querySelector('[data-mi="age"]') || null;
+    this.elInspectorFil  = this.elInspector?.querySelector('[data-mi="filaments"]') || null;
+    this.elInspectorFilRow = this.elInspector?.querySelector('.mi-row-filaments') || null;
+    this._inspectorVisible = false;
+    this._inspectorWidth = 0;
+    this._inspectorHeight = 0;
     this._renderedLawCount = 0;
     this._unlockNodes  = new Map();
     this._instrumentNodes = new Map();
@@ -624,6 +634,96 @@ export class UI {
     if (head) head.appendChild(switchEl);
     else wrap.appendChild(switchEl);
     return { wrap, apply };
+  }
+
+  // Show/hide/update the macro inspector panel. `data` is null to hide.
+  // `data` shape: { kind, mass, absorbed, age, filaments, screenX, screenY,
+  //                 macroRadiusCss, pinned }
+  setMacroInspector(data) {
+    const el = this.elInspector;
+    if (!el) return;
+
+    if (!data) {
+      if (this._inspectorVisible) {
+        el.removeAttribute('data-visible');
+        el.removeAttribute('data-pinned');
+        el.removeAttribute('data-kind');
+        el.hidden = true;
+        this._inspectorVisible = false;
+      }
+      return;
+    }
+
+    const wasHidden = el.hidden;
+    if (wasHidden) el.hidden = false;
+
+    const kindLabel = data.kind === 'cradle' ? 'Cradle' : 'Structure';
+    if (this.elInspectorKind && this.elInspectorKind.textContent !== kindLabel) {
+      this.elInspectorKind.textContent = kindLabel;
+    }
+    el.setAttribute('data-kind', data.kind);
+
+    const massStr = Math.round(data.mass).toString();
+    if (this.elInspectorMass && this.elInspectorMass.textContent !== massStr) {
+      this.elInspectorMass.textContent = massStr;
+    }
+    const absStr = Math.round(data.absorbed).toString();
+    if (this.elInspectorAbs && this.elInspectorAbs.textContent !== absStr) {
+      this.elInspectorAbs.textContent = absStr;
+    }
+    const ageStr = `${Math.round(data.age)}s`;
+    if (this.elInspectorAge && this.elInspectorAge.textContent !== ageStr) {
+      this.elInspectorAge.textContent = ageStr;
+    }
+    if (this.elInspectorFilRow) {
+      if (data.filaments > 0) {
+        this.elInspectorFilRow.hidden = false;
+        const filStr = data.filaments.toString();
+        if (this.elInspectorFil && this.elInspectorFil.textContent !== filStr) {
+          this.elInspectorFil.textContent = filStr;
+        }
+      } else {
+        this.elInspectorFilRow.hidden = true;
+      }
+    }
+
+    if (data.pinned) el.setAttribute('data-pinned', '1');
+    else el.removeAttribute('data-pinned');
+
+    // Measure once content has rendered (cheap because contents are small).
+    // We use translate3d, never left/top, so this avoids layout thrash.
+    if (wasHidden || this._inspectorWidth === 0) {
+      const rect = el.getBoundingClientRect();
+      this._inspectorWidth  = rect.width;
+      this._inspectorHeight = rect.height;
+    }
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pad = 8;
+    const offset = Math.max(14, (data.macroRadiusCss || 12) + 14);
+    let x = data.screenX + offset;
+    let y = data.screenY - this._inspectorHeight / 2;
+
+    // Flip to left side if it would clip the right edge.
+    if (x + this._inspectorWidth > vw - pad) {
+      x = data.screenX - offset - this._inspectorWidth;
+    }
+    // Clamp vertically + horizontally inside viewport with a small margin.
+    if (x < pad) x = pad;
+    if (x + this._inspectorWidth > vw - pad) x = vw - pad - this._inspectorWidth;
+    if (y < pad) y = pad;
+    if (y + this._inspectorHeight > vh - pad) y = vh - pad - this._inspectorHeight;
+
+    el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+
+    if (!this._inspectorVisible) {
+      // Defer the visible flag a tick so opacity transition runs even on first show.
+      requestAnimationFrame(() => {
+        if (!el.hidden) el.setAttribute('data-visible', '1');
+      });
+      this._inspectorVisible = true;
+    }
   }
 
   render(state) {

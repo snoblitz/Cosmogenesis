@@ -27,6 +27,24 @@ export class Simulation {
   setBounds(w, h) { this.bounds.w = w; this.bounds.h = h; }
   setEraLevel(n)  { this.eraLevel = n; }
 
+  // Hit-test a world point against macros. `padWorld` is added to every macro's
+  // radius so callers can make tap targets larger than the visual circle.
+  // Returns the nearest qualifying macro (by normalized distance), or null.
+  pickMacroAt(wx, wy, padWorld = 0) {
+    let best = null;
+    let bestScore = Infinity;
+    for (const m of this.macros) {
+      const dx = m.x - wx;
+      const dy = m.y - wy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const reach = m.r + padWorld;
+      if (dist > reach) continue;
+      const score = dist / reach;
+      if (score < bestScore) { bestScore = score; best = m; }
+    }
+    return best;
+  }
+
   spawnParticle(x, y) {
     if (this.particles.length >= MAX_PARTICLES) {
       // Drop the oldest non-massive particle to make room

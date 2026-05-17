@@ -577,6 +577,64 @@ body {
   margin-top: 10px;
 }
 
+#macro-inspector {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 180;
+  min-width: 156px;
+  padding: 12px 14px 11px;
+  background: rgba(10, 8, 24, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(184, 164, 255, 0.32);
+  border-radius: 10px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5),
+              0 0 48px rgba(184, 164, 255, 0.08);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+  line-height: 1.45;
+  letter-spacing: 0.2px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  will-change: transform, opacity;
+  transform: translate3d(-9999px, -9999px, 0);
+}
+#macro-inspector[data-visible="1"] {
+  opacity: 1;
+}
+#macro-inspector .mi-kind {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #c7b6ff;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+#macro-inspector[data-kind="cradle"] .mi-kind {
+  color: #ffd49b;
+}
+#macro-inspector .mi-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 2px 0;
+}
+#macro-inspector .mi-label {
+  color: rgba(255, 255, 255, 0.48);
+}
+#macro-inspector .mi-value {
+  color: rgba(255, 255, 255, 0.92);
+  font-variant-numeric: tabular-nums;
+}
+#macro-inspector[data-pinned="1"] {
+  border-color: rgba(199, 182, 255, 0.55);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55),
+              0 0 56px rgba(184, 164, 255, 0.18);
+}
+
 #hud-top-right {
   position: absolute;
   top: 24px;

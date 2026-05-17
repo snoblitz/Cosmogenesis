@@ -122,6 +122,19 @@ export class Renderer {
     };
   }
 
+  // Inverse of screenToWorld. Returns CSS pixels (divides internal-canvas
+  // pixels by dpr) so DOM panels can be positioned without further math.
+  // Ignores the small camera drift/rotation in render(), which is sub-pixel
+  // for the inspector's purposes.
+  worldToScreenCss(wx, wy) {
+    const cxCanvas = this.canvas.width  / 2;
+    const cyCanvas = this.canvas.height / 2;
+    const sxCanvas = (wx - this.cam.x) * this.zoom + cxCanvas;
+    const syCanvas = (wy - this.cam.y) * this.zoom + cyCanvas;
+    const d = this.dpr || 1;
+    return { x: sxCanvas / d, y: syCanvas / d };
+  }
+
   _makeStars(n) {
     const out = [];
     for (let i = 0; i < n; i++) {

@@ -8,6 +8,7 @@ import { UI }         from './ui.js';
 import { Audio }      from './audio.js';
 import { loadGame, saveGame, clearSave, setFreshUntil } from './save.js';
 import { ERAS, MIN_ZOOM, FIRST_LIGHT_ERA } from './eras.js';
+import { MACRO_CRADLE_THRESHOLD } from './simulation.js';
 
 const canvas = document.getElementById('universe');
 const sim    = new Simulation();
@@ -86,10 +87,23 @@ let _prevEraIndex = state.eraIndex;
 // --- Input ---
 // Click/tap = single particle. Hold = continuous flow. Drag = paint a stream.
 // Spawn rate ramps up the longer you hold, so charging feels intentional.
+// Tap on a macro (touch only) pins the inspector instead of spawning, with a
+// movement slop so accidental drags still paint as expected.
 let holding = false;
 let holdStartAt = 0;
 let lastSpawnAt = 0;
 const screenPos = { x: 0, y: 0 };
+let pointerInside = false;
+let lastPointerType = 'mouse';
+
+// Inspector tracking. Pin survives across frames; hover is re-resolved per
+// frame so moving macros are followed correctly. Pending pin holds a candidate
+// during the slop window before we commit to "tap" vs "drag".
+let inspectorPinId = null;
+let pendingPinId = null;
+let pendingPinStart = null; // { x, y, pointerId, t }
+const TAP_SLOP_PX = 10;     // CSS pixels of movement allowed before tap → drag
+const TAP_MAX_MS = 600;     // beyond this, a held finger no longer pins
 
 function eventToScreen(e) {
   const rect = canvas.getBoundingClientRect();
@@ -126,11 +140,112 @@ function tickHold() {
   requestAnimationFrame(tickHold);
 }
 
+// Inspector visibility is gated by the thermal lens being active: if you
+// can't see macros, you can't inspect them.
+function inspectorAllowed() {
+  return !!state.lensVisuallyActive;
+}
+
+// Effective hit-test padding in world units. We pad in CSS px and convert.
+// dpr scales from CSS to internal canvas px; zoom scales internal to world.
+function hitPadWorld(cssPx) {
+  return (cssPx * renderer.dpr) / renderer.zoom;
+}
+
+function pickMacroAtScreen(sx, sy, cssPad) {
+  const w = renderer.screenToWorld(sx, sy);
+  return sim.pickMacroAt(w.x, w.y, hitPadWorld(cssPad));
+}
+
+function macroInspectorData(m, pinned) {
+  // Filament count: walk the renderer's live filaments map and count keys
+  // whose endpoint ids exactly match this macro.
+  let fil = 0;
+  if (renderer && renderer._filaments) {
+    const id = m.id;
+    for (const key of renderer._filaments.keys()) {
+      const us = key.indexOf('_');
+      if (us <= 0) continue;
+      const a = +key.slice(0, us);
+      const b = +key.slice(us + 1);
+      if (a === id || b === id) fil++;
+    }
+  }
+  const screen = renderer.worldToScreenCss(m.x, m.y);
+  const macroRadiusCss = (m.r * renderer.zoom) / renderer.dpr;
+  return {
+    kind: m.mass >= MACRO_CRADLE_THRESHOLD ? 'cradle' : 'structure',
+    mass: m.mass,
+    absorbed: m.absorbed,
+    age: m.age,
+    filaments: fil,
+    screenX: screen.x,
+    screenY: screen.y,
+    macroRadiusCss,
+    pinned: !!pinned
+  };
+}
+
+function findMacroById(id) {
+  if (id == null) return null;
+  for (const m of sim.macros) if (m.id === id) return m;
+  return null;
+}
+
+function resolveInspector() {
+  if (!inspectorAllowed()) {
+    inspectorPinId = null;
+    pendingPinId = null;
+    ui.setMacroInspector(null);
+    return;
+  }
+
+  // Pinned wins. Drop pin if the macro is gone (merged or expired).
+  if (inspectorPinId != null) {
+    const m = findMacroById(inspectorPinId);
+    if (!m) { inspectorPinId = null; }
+    else { ui.setMacroInspector(macroInspectorData(m, true)); return; }
+  }
+
+  // While the player is spawning, hide hover to keep focus on the act.
+  if (holding) { ui.setMacroInspector(null); return; }
+
+  // Touch has no hover concept: don't reveal anything after a touch lifts.
+  if (lastPointerType !== 'mouse' && lastPointerType !== 'pen') {
+    ui.setMacroInspector(null);
+    return;
+  }
+
+  if (!pointerInside) { ui.setMacroInspector(null); return; }
+
+  const m = pickMacroAtScreen(screenPos.x, screenPos.y, 10);
+  if (m) ui.setMacroInspector(macroInspectorData(m, false));
+  else   ui.setMacroInspector(null);
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   const { x, y } = eventToScreen(e);
   screenPos.x = x;
   screenPos.y = y;
+  pointerInside = true;
+  lastPointerType = e.pointerType || 'mouse';
+
+  // Touch (or pen) on a macro: tentative pin. We hold off spawning until the
+  // pointer either lifts (confirming the tap) or moves past the slop (drag).
+  if ((lastPointerType === 'touch' || lastPointerType === 'pen') && inspectorAllowed()) {
+    const m = pickMacroAtScreen(x, y, 16);
+    if (m) {
+      pendingPinId = m.id;
+      pendingPinStart = { x, y, pointerId: e.pointerId, t: performance.now() };
+      canvas.setPointerCapture(e.pointerId);
+      return; // no spawn, no hold yet
+    }
+  }
+
+  // Tapping empty space dismisses any existing pin.
+  if (inspectorPinId != null) inspectorPinId = null;
+
   holding = true;
   holdStartAt = performance.now();
   canvas.setPointerCapture(e.pointerId);
@@ -140,22 +255,57 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  if (!holding) return;
   const { x, y } = eventToScreen(e);
   screenPos.x = x;
   screenPos.y = y;
+  pointerInside = true;
+  if (e.pointerType) lastPointerType = e.pointerType;
+
+  // If we have a pending pin (touch/pen on a macro), watch for drag.
+  if (pendingPinId != null && pendingPinStart) {
+    const rect = canvas.getBoundingClientRect();
+    const dxCss = (x - pendingPinStart.x) * (rect.width  / canvas.width);
+    const dyCss = (y - pendingPinStart.y) * (rect.height / canvas.height);
+    const dist  = Math.hypot(dxCss, dyCss);
+    const aged  = performance.now() - pendingPinStart.t;
+    if (dist > TAP_SLOP_PX || aged > TAP_MAX_MS) {
+      // Treat as a paint gesture from this point forward. Don't retro-spawn.
+      pendingPinId = null;
+      pendingPinStart = null;
+      holding = true;
+      holdStartAt = performance.now();
+      lastSpawnAt = 0;
+      spawnAtScreen(x, y);
+      lastSpawnAt = holdStartAt;
+      requestAnimationFrame(tickHold);
+    }
+  }
 });
 
 function endHold(e) {
+  // Resolve any pending pin first. If the pointer lifted while still close to
+  // its origin, commit the pin. Otherwise it was already promoted to a hold.
+  if (pendingPinId != null) {
+    inspectorPinId = pendingPinId;
+    pendingPinId = null;
+    pendingPinStart = null;
+  }
   holding = false;
   if (e && e.pointerId !== undefined && canvas.hasPointerCapture?.(e.pointerId)) {
     canvas.releasePointerCapture(e.pointerId);
   }
+  // Touch lifts off → pointer is no longer "inside" for hover purposes.
+  if (e && (e.type === 'pointerup' || e.type === 'pointercancel')) {
+    if (lastPointerType === 'touch') pointerInside = false;
+  }
 }
 canvas.addEventListener('pointerup',     endHold);
 canvas.addEventListener('pointercancel', endHold);
-canvas.addEventListener('pointerleave',  endHold);
-window.addEventListener('blur',          () => endHold());
+canvas.addEventListener('pointerleave',  (e) => {
+  pointerInside = false;
+  endHold(e);
+});
+window.addEventListener('blur',          () => { pointerInside = false; endHold(); });
 
 // --- Reset (two-click to confirm, with visual prompt) ---
 const resetBtn = document.getElementById('reset-btn');
@@ -188,6 +338,11 @@ resetBtn.addEventListener('pointerdown', (e) => {
     setFreshUntil(Date.now() + FRESH_WINDOW_MS);
     location.reload();
   }
+});
+
+canvas.addEventListener('pointerenter', (e) => {
+  pointerInside = true;
+  if (e.pointerType) lastPointerType = e.pointerType;
 });
 
 // --- Game loop ---
@@ -223,6 +378,7 @@ function frame(now) {
   state.update(sim, renderer);
   renderer.render(sim, state);
   ui.render(state);
+  resolveInspector();
 
   requestAnimationFrame(frame);
 }
