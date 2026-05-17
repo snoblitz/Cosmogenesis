@@ -166,6 +166,29 @@ When you're tempted to reach for a library, ask: can this be 50 lines of vanilla
 
 ---
 
+## Bodies as identities (v0.2)
+
+The original v0.1 universe was a beautiful spectacle of mass — particles, structures, cradles, filaments — but every body was anonymous. v0.2 grants every promoted macro an **identity**:
+
+- A name from birth (`Structure342`, `Cradle13460`) where the suffix is the cosmic year of birth
+- A life history: born, what it absorbed, when it crossed the cradle threshold
+- The player can **rename** any body to whatever they want
+- The player can **track** any body, pinning it to a Catalog panel with its full timeline
+
+This is intentionally close to how astronomers relate to the cosmos. Andromeda. Betelgeuse. NGC 1300. Knowing a body's name and history *transforms* the relationship with it. The cosmos stops being a generic backdrop and starts being a place full of named characters with stories.
+
+**The design pillar:** every body of significance can be addressed and remembered. The simulation doesn't gain new mechanics from naming, but the *player's relationship to the cosmos* does.
+
+Bodies the player has personally named and tracked become heirlooms — they survive merges, get their histories recorded in detail, and (eventually, post-First Light) can be witnessed igniting into stars. The "+372 mass" line in a Cradle's timeline isn't just a number; it's the moment that body crossed a threshold the player will remember.
+
+**Practical rules:**
+- Auto-names are determined at the moment of promotion (kind + cosmic year suffix). They follow the body via the auto-rename pass when a Structure crosses into Cradle mass.
+- Player-set names are *sacred*. The auto-rename pass only touches names that exactly match the auto-name pattern.
+- A body's history captures observable, narrative-worthy events. Silent particle accretion does NOT generate history entries (it would explode the log with phantom events). Only real macro-on-macro events do.
+- A tombstone glyph marks bodies that died (got absorbed) in another body's timeline — a small visual cue that this is the only place that body now exists.
+
+---
+
 ## Anti-patterns we deliberately avoid
 
 | Pattern | Why we don't do it |

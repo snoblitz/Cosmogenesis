@@ -249,10 +249,211 @@ If you're coming back to this after time away:
 - **Hold the mouse for 5 seconds** to rapidly fill the void
 - **At tap 25**, the opening whisper fires + Radio Lens unlocks + sweep begins
 - **At tap 100**, Thermal Lens unlocks via scan reveal
-- **Era 3** (first macro at mass 70) plays the grand cue
+- **Era 3** (first macro at mass 25) plays the grand cue (post-v0.2, threshold is 25 not 70)
 - **Era 4** (second macro) starts the cosmic web
 - **Era 5+** is the next big build (see [ROADMAP.md](ROADMAP.md))
 
 If something feels broken, **check [DESIGN.md](DESIGN.md) first**. Most "bugs" are actually design choices.
 
 The universe is waiting. 🌌
+
+---
+
+# Session Log Part II — How v0.2 came together
+
+> *"in the perspective of the player immersion, lets rename seconds in the game to years - then have each tick equal 10 years"*
+> *— Jeff, somewhere in the middle of v0.2*
+
+The same Sunday. After v0.1 shipped + got pushed to GitHub as `snoblitz/Cosmogenesis`, the session kept going. Where v0.1 gave the cosmos eras and lenses, v0.2 gave its bodies names, histories, and identities.
+
+---
+
+## The post-checkpoint tuning round
+
+Jeff plays the freshly-shipped v0.1 and observes: cradles are forming too fast (their count equals structures count), filaments aren't getting a chance to form. Tony diagnoses: chain-merges in single ticks push particles past the 200-mass cradle threshold directly; filament MIN range is too tight at 800 world units.
+
+Three constants get retuned in commit `0e6454b`:
+- `MACRO_CRADLE_THRESHOLD` 200 → 500 (rarer, more meaningful cradles)
+- Filament reach 800-2200 → 1100-2400 (light pairs can connect further)
+- `MACRO_MUTUAL_G` 1.5 → 2.2 (Tier 2 pulls distant pairs together faster)
+
+Things feel right again. Cradles are special, filaments are achievable.
+
+---
+
+## "Add a hover-over (or tap for phone) effect that shows information"
+
+Jeff wants a macro inspector. Tony goes wide on the design space with a rubber-duck pass first: DPR-correct hit-test padding, touch vs. mouse gating, thermal-lens visibility constraints, viewport edge clamping. All adopted.
+
+The first ship (commit `e6e4679`):
+- Hover (mouse) or tap (touch) on a macro shows a small read-only panel
+- Mass / Absorbed / Age / Filaments
+- Touch tap-to-pin with 10px slop so paint gestures still work
+- Per-frame DOM repositioning via `translate3d` (no layout thrash)
+- Gated by Thermal Lens being active (no reveal of hidden bodies)
+
+Cosmogenesis suddenly has *interactive bodies*.
+
+---
+
+## "Can we add the ability to name them?"
+
+Jeff's next move. Tony's first attempt (commit `f6bffa1`): inline pencil + star buttons on the inspector. Click pencil → input appears in place. Click star → body becomes tracked, appears in a new Catalog card under Discovered Laws.
+
+It looked great. **It didn't work.** The buttons were 18×18 px floating on a moving panel only visible on hover. Hover users couldn't reliably reach them. Jeff: *"hmmm, click to name isnt working, how about right click for mouse and long press for phone - a context menu that allows player interaction"*
+
+Tony rebuilds (commit `cda831c`):
+- Read-only inspector (panel becomes pure info display)
+- **Right-click** (mouse) or **long-press 550ms** (touch) opens a context menu at the click/touch point
+- Menu actions: Rename, Track / Untrack
+- Click Rename → menu morphs in-place into a text input (Enter saves, Esc cancels, blur commits)
+- Document-level click-outside dismiss in capture phase with `stopPropagation` so closing the menu doesn't double as a spawn
+- Subtle hint line on the inspector: *"Right-click for options"* / *"Hold for options"*
+
+Conventional context-menu UX. Works immediately.
+
+---
+
+## "Naming the first names them all the same"
+
+Jeff hits a bug: rename one body, all bodies appear to share that name. Tony investigates and finds two compounding causes:
+1. The inspector was hiding `.mi-name` instead of clearing its text. Any unhide-without-rewrite path would resurface stale text.
+2. `_enterRenameMode` was pre-filling the input from `.mi-name`'s textContent — but the inspector might be showing a different body by the time the menu was interacted with.
+
+Both fixed (commit `01a0cd6`). At the same time, Tony ships the deeper feature Jeff actually asked for: **auto-naming**.
+
+> *"Lets assign a base name to each upon creation and use the timeline in seconds as the number - e.g. Cradle1346"*
+
+Every macro is born with a name. Suffix = simulation seconds at promotion (`bornAtS`). Prefix = kind at promotion. `Structure1346`. `Cradle3870`. Two bodies born in the same second collide; the player can always rename.
+
+Empty rename now reverts to the auto-name instead of leaving a "no name" state. The whole concept of "unnamed macro" disappears.
+
+---
+
+## "Lets rename seconds in the game to years"
+
+The polish that transforms the whole feel.
+
+> *"in the perspective of the player immersion, lets rename seconds in the game to years - then have each tick equal 10 years"*
+
+`YEARS_PER_SECOND = 10` constant added (commit `bb45d81`). The auto-name suffix multiplies. The inspector's Age row shows `50 yr` instead of `5s`. Same body that would have been named `Structure342` in real-seconds is now `Structure3420` in cosmic years.
+
+Then (commit `cf762cd`): a live **Year counter** in the HUD top-left, above Era. Pulled from `state.cosmicYear` which `state.update` computes from `sim.totalElapsedS * YEARS_PER_SECOND`.
+
+Then (commit `2832ef0`): full digits, no K/M/B abbreviation. *"lets also not abbreviate the year counter - it breaks immersive scale."* `13,460` not `13.4K`. Watching the number grow IS the scale.
+
+---
+
+## The mute button fiasco
+
+> *"hmmm sound is broken - also, we need a favico"*
+
+Tony adds the favicon (commit `94bd231`, inline-SVG igniting cradle). Then chases the audio bug for ~10 minutes through code paths that hadn't changed in days.
+
+Jeff, eventually: *"LOL it was the 'M' key"*
+
+The M-key mute had no visual indicator. An accidental keypress silently muted everything across reloads. Classic footgun.
+
+Tony ships a real button (commit `16840ba`): bottom-right above the settings ⚙, red-tinted when muted. Then immediately ships consistency (commit `bee18b2`): same speaker-with-strike SVG that the radio lens instrument toggle uses, with the same CSS stroke-dasharray draw-in animation. Master mute and per-instrument mute speak the same visual language.
+
+> *"in the perspective of the player immersion"* — turns into the rule for everything from here on.
+
+---
+
+## "Potential and Matter never really differ"
+
+Jeff observes the two counters track each other almost exactly. By design v0.1 had nearly conservative merges (only the particle cap evicted mass). Tony introduces a **binding energy tax** (commit `096f71f`):
+
+```js
+export const MERGE_RETENTION = 0.96;  // 4% lost as radiation per bind
+```
+
+Every merge — particle-particle, macro-macro — retains 96% of combined mass. The lost 4% is "binding energy released as radiation". Updated the Matter tooltip to reflect this. Fits perfectly with the upcoming First Light era (the stars are quite literally made of that lost mass).
+
+**Then it broke structure formation.** Jeff's next message:
+
+> *"still no structures, some threshold change?"*
+
+Quick math: at 4% tax, sequential accretion of mass-1 particles has a steady-state cap of `0.96/0.04 = 24` mass. The promotion threshold was 70. Below the cap. **Nothing could promote.** Jeff hit Year 2,553 with 4,800 Potential and zero Structures.
+
+Two-knob fix (commit `8cf623c`):
+- `MERGE_RETENTION` 0.96 → 0.97 (gentler tax, still visible divergence)
+- `MACRO_MASS_THRESHOLD` 70 → 25 (sequential accretion cap is now ~32 mass, above threshold)
+
+Structures form again. Potential vs. Matter visibly diverges. Both knobs are tunable; the design moment is solid.
+
+---
+
+## "Build an expandable history that shows how it came to be"
+
+The crown jewel of v0.2. Each tracked body in the Catalog can expand to show its full life timeline.
+
+Tony plans first (rubber-duck pass), then implements (commit `60d94a0`):
+- Every macro carries `history: [{atS, kind, mass?, targetName?}]`
+- Events: `born`, `born-cradle`, `absorbed` (with the absorbed body's name + mass), `cradle` (threshold crossing)
+- Cap at 50 entries per macro (born + cradle always retained, oldest absorbs trim first)
+- Insertion order preserved (no sort) so same-tick events read causally
+- `crossedCradle` flag on the macro so the cradle event fires from the *physical* crossing, not the auto-rename — player-renamed bodies still get the milestone
+
+The catalog row gains a chevron button. Click → expand → see the timeline. Click the title → still pins the inspector.
+
+**Three bugs caught in sequence:**
+
+1. CSS `display: flex` on `.cat-timeline` silently overrode the HTML `hidden` attribute. The timeline div was always rendered (empty when "hidden"), so clicking the chevron had no visible effect. Fixed by moving show/hide to a `.is-expanded` class on the parent li (commit `dea4a50`).
+
+2. Jeff: *"still not working."* The chevron was 18×18 px with no border — below any reasonable tap target. Bumped to 32×32 with hover background (commit `268eb7d`).
+
+3. Jeff: *"yeah still not working."* Tony debugged for real this time and found it: `#ui` has `pointer-events: none` so the canvas stays interactive. The catalog never opted back in with `pointer-events: auto`. **The chevron handler was correct; the catalog just wasn't receiving clicks at all.** One-line CSS fix (commit `f839060`).
+
+Catalog finally clickable. History finally expanding.
+
+---
+
+## "I didn't see it absorb all those structures"
+
+Jeff expands a Cradle's history and sees dozens of `Absorbed Structure{N}` events for bodies he never observed. Suspects misclassification.
+
+Tony investigates: the events are accurate. The mechanism: particles in a Cradle's gravity well accumulate mass via particle-particle merges, hit the (new, lowered) 25 mass threshold, promote into Structures for one frame *inside the Cradle's body*, immediately get absorbed on the next tick. Real events, just visually invisible.
+
+Fix (commit `226b016`): in the promotion step, check if the about-to-promote particle is inside any existing macro's body via `_macroContaining(x, y)`. If so, silently transfer its mass to that macro (with the merge tax) and skip promotion. Free-space promotions still happen normally.
+
+Catalog timelines stop being noisy with phantom events.
+
+---
+
+## Tombstones
+
+> *"anytime it absorbs and kills another body, put a little tombstone icon (not emoji) next to it in the history"*
+
+Inline-SVG arched headstone glyph, drawn in `currentColor` at lower opacity. Sits right after the absorbed body's name in the timeline label. Refactored the absorbed row from `textContent` to structured DOM nodes so the SVG could be interleaved.
+
+```
+YEAR 2,160
+Absorbed Cradle1900 🪨 (+312 mass)
+```
+
+(where 🪨 is the actual SVG, not the emoji)
+
+The dead get a marker. The catalog becomes a family graveyard as much as a registry.
+
+---
+
+## Closing v0.2
+
+Twenty commits between the v0.1 checkpoint (`4271a44`) and the v0.2 checkpoint. The simulation didn't change much — same physics, same eras, same lenses. What changed was the *relationship*: Cosmogenesis stopped being a beautiful spectacle of anonymous mass and became a place full of named bodies with stories.
+
+The final commit on the day:
+
+> *"okay time to update all our docs and checkpoints, then push as v0.2"*
+
+This file is part of that closing.
+
+---
+
+> *"we've built something truly incredible in my opinion."*
+> *— Jeff, just before the v0.1 checkpoint*
+
+> *"that's actually super cool"*
+> *— Tony, somewhere mid-v0.2, while writing the rubber-duck prompt for the history feature*
+
+Two checkpoints, one Sunday. The universe is waiting.
