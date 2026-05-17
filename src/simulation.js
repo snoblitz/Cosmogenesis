@@ -13,6 +13,9 @@ export const MACRO_CRADLE_THRESHOLD = 500; // mass at which a macro is a "Cradle
 // in the player-facing universe. Internal dt math stays in real seconds; this
 // only affects what we *show* the player (auto-name suffix, ages, etc.).
 export const YEARS_PER_SECOND = 10;
+// Cap on per-macro history entries kept in memory + localStorage. We always
+// retain born and cradle milestones; oldest absorbs are trimmed first.
+export const MAX_MACRO_HISTORY = 50;
 
 const DAMPING = 0.997;
 const TIME_SCALE = 60; // dt is seconds; multiply velocity by this so numbers feel right
@@ -179,6 +182,19 @@ export class Simulation {
   _promoteAutoNames() {
     for (const m of this.macros) {
       if (m.mass < MACRO_CRADLE_THRESHOLD) continue;
+      // Physical threshold crossing event, regardless of whether the name
+      // gets rewritten. Player-renamed bodies still get their cradle moment
+      // recorded in the timeline.
+      if (!m.crossedCradle) {
+        m.crossedCradle = true;
+        this._pushHistory(m, {
+          atS: this.totalElapsedS,
+          kind: 'cradle',
+          mass: m.mass
+        });
+      }
+      // Name promotion: only rewrite if the name still matches the exact
+      // original auto-name. Player-renamed bodies keep their name.
       if (typeof m.bornAtS !== 'number') continue;
       const suffix = m.bornAtS * YEARS_PER_SECOND;
       const oldAuto = `Structure${suffix}`;
@@ -201,7 +217,8 @@ export class Simulation {
     // display so the name stays in cosmic units.
     const bornAtS = Math.max(0, Math.floor(this.totalElapsedS));
     const bornAtYears = bornAtS * YEARS_PER_SECOND;
-    const kind = p.mass >= MACRO_CRADLE_THRESHOLD ? 'Cradle' : 'Structure';
+    const bornAsCradle = p.mass >= MACRO_CRADLE_THRESHOLD;
+    const kind = bornAsCradle ? 'Cradle' : 'Structure';
     return {
       id: this.nextId++,
       x: p.x, y: p.y,
@@ -213,8 +230,14 @@ export class Simulation {
       pulse: Math.random() * Math.PI * 2,
       absorbed: Math.round(p.mass),
       bornAtS,
+      crossedCradle: bornAsCradle,
       name: `${kind}${bornAtYears}`,
-      tracked: false
+      tracked: false,
+      history: [{
+        atS: this.totalElapsedS,
+        kind: bornAsCradle ? 'born-cradle' : 'born',
+        mass: p.mass
+      }]
     };
   }
 
@@ -267,10 +290,40 @@ export class Simulation {
         a.mass = tm;
         a.r = Math.max(8, Math.cbrt(tm) * 4.5);
         a.absorbed += b.absorbed;
+        // Record the absorption in A's history. Snapshot B's name + mass at
+        // this moment; B is about to be spliced out.
+        this._pushHistory(a, {
+          atS: this.totalElapsedS,
+          kind: 'absorbed',
+          targetName: b.name || 'unnamed',
+          mass: b.mass
+        });
         this.macros.splice(j, 1);
         j--;
       }
     }
+  }
+
+  // Push an event onto a macro's history with a soft cap. We always retain
+  // the first event (born) and any cradle thresholds; ordinary absorbs get
+  // trimmed from the oldest first when the cap is exceeded.
+  _pushHistory(m, event) {
+    if (!Array.isArray(m.history)) m.history = [];
+    m.history.push(event);
+    if (m.history.length <= MAX_MACRO_HISTORY) return;
+    // Build a kept set: index 0 (born) + every cradle + the most recent
+    // events until we're under the cap.
+    const keep = new Array(m.history.length).fill(false);
+    keep[0] = true;
+    for (let i = 0; i < m.history.length; i++) {
+      const k = m.history[i].kind;
+      if (k === 'cradle' || k === 'born-cradle' || k === 'born') keep[i] = true;
+    }
+    let kept = keep.reduce((n, v) => n + (v ? 1 : 0), 0);
+    for (let i = m.history.length - 1; i >= 0 && kept < MAX_MACRO_HISTORY; i--) {
+      if (!keep[i]) { keep[i] = true; kept++; }
+    }
+    m.history = m.history.filter((_, i) => keep[i]);
   }
 
   serialize() {
@@ -284,8 +337,10 @@ export class Simulation {
         mass: m.mass, r: m.r, hue: m.hue, age: m.age,
         pulse: m.pulse, absorbed: m.absorbed,
         bornAtS: typeof m.bornAtS === 'number' ? m.bornAtS : 0,
+        crossedCradle: !!m.crossedCradle,
         name: m.name || null,
-        tracked: !!m.tracked
+        tracked: !!m.tracked,
+        history: Array.isArray(m.history) ? m.history.slice() : []
       })),
       nextId: this.nextId,
       eraLevel: this.eraLevel,
@@ -304,12 +359,27 @@ export class Simulation {
     this.totalSpawned = d.totalSpawned || 0;
     this.totalElapsedS = typeof d.totalElapsedS === 'number' ? d.totalElapsedS : 0;
 
-    // Backfill bornAtS + name for legacy macros saved before auto-naming.
+    // Backfill bornAtS + name + history for legacy macros saved before
+    // their respective features.
+    const KNOWN_KINDS = new Set(['born', 'born-cradle', 'absorbed', 'cradle']);
     for (const m of this.macros) {
       if (typeof m.bornAtS !== 'number') {
         m.bornAtS = Math.max(0, Math.floor(this.totalElapsedS - (m.age || 0)));
       }
       if (!m.name) m.name = this._autoNameFor(m);
+      // Filter junk + defensively sanitize each event.
+      if (!Array.isArray(m.history)) m.history = [];
+      m.history = m.history.filter(e => e && typeof e === 'object' && KNOWN_KINDS.has(e.kind));
+      // Synthesize a born event if this macro never had a history recorded.
+      if (m.history.length === 0) {
+        const bornKind = (m.mass || 0) >= MACRO_CRADLE_THRESHOLD ? 'born-cradle' : 'born';
+        m.history.push({ atS: Math.max(0, m.bornAtS), kind: bornKind, mass: m.mass || 0 });
+      }
+      // Backfill the cradle-crossed flag from current mass so the event
+      // doesn't get re-recorded on load.
+      if (typeof m.crossedCradle !== 'boolean') {
+        m.crossedCradle = (m.mass || 0) >= MACRO_CRADLE_THRESHOLD;
+      }
     }
   }
 }

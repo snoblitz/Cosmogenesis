@@ -220,8 +220,8 @@ export class UI {
     this.elInspectorHint = this.elInspector?.querySelector('.mi-hint') || null;
     this.elCatalogPanel  = document.getElementById('hud-catalog');
     this.elCatalogList   = document.getElementById('catalog-list');
-    this._catalogNodes   = new Map();   // macroId -> li
-    this._catalogPinnedId = null;        // for visual highlight sync
+    this._catalogNodes   = new Map();   // macroId -> { li, titleEl, subEl, timelineEl }
+    this._catalogExpanded = new Set();   // macroIds whose timeline is open
     this._inspectorVisible = false;
     this._inspectorWidth = 0;
     this._inspectorHeight = 0;
@@ -985,9 +985,12 @@ export class UI {
       if (this._catalogNodes.size) {
         this.elCatalogList.innerHTML = '';
         this._catalogNodes.clear();
+        if (this._catalogExpanded) this._catalogExpanded.clear();
       }
       return;
     }
+
+    if (!this._catalogExpanded) this._catalogExpanded = new Set();
 
     // Sort: cradles first (rarer/more meaningful), then by mass desc.
     tracked.sort((a, b) => {
@@ -1001,30 +1004,18 @@ export class UI {
     let prevNode = null;
     for (const m of tracked) {
       seen.add(m.id);
-      let li = this._catalogNodes.get(m.id);
-      if (!li) {
-        li = document.createElement('li');
-        li.dataset.macroId = String(m.id);
-        const title = document.createElement('span');
-        title.className = 'cat-title';
-        const sub = document.createElement('span');
-        sub.className = 'cat-sub';
-        li.appendChild(title);
-        li.appendChild(sub);
-        li.addEventListener('click', () => {
-          if (typeof this.onCatalogEntryClick === 'function') {
-            this.onCatalogEntryClick(m.id);
-          }
-        });
-        this._catalogNodes.set(m.id, li);
+      let entry = this._catalogNodes.get(m.id);
+      if (!entry) {
+        entry = this._buildCatalogEntry(m.id);
+        this._catalogNodes.set(m.id, entry);
       }
+      const { li, titleEl, subEl, timelineEl } = entry;
+
       const kind = m.mass >= cradleThreshold ? 'cradle' : 'structure';
       if (li.dataset.kind !== kind) li.dataset.kind = kind;
       const isPinned = (pinnedId != null && pinnedId === m.id);
       li.classList.toggle('is-pinned', isPinned);
 
-      const titleEl = li.firstChild;
-      const subEl   = li.lastChild;
       const titleText = m.name && m.name.length
         ? m.name
         : (kind === 'cradle' ? 'Cradle' : 'Structure');
@@ -1035,6 +1026,15 @@ export class UI {
       const subText = `${kindLabel} \u00b7 ${massStr} mass`;
       if (subEl.textContent !== subText) subEl.textContent = subText;
 
+      const expanded = this._catalogExpanded.has(m.id);
+      li.classList.toggle('is-expanded', expanded);
+      if (expanded) {
+        timelineEl.hidden = false;
+        this._renderTimelineInto(timelineEl, m);
+      } else {
+        timelineEl.hidden = true;
+      }
+
       // Maintain sort order in the DOM.
       const nextSibling = prevNode ? prevNode.nextSibling : this.elCatalogList.firstChild;
       if (li !== nextSibling) {
@@ -1043,13 +1043,115 @@ export class UI {
       prevNode = li;
     }
 
-    // Remove entries for macros that are no longer tracked (or no longer exist).
-    for (const [id, li] of this._catalogNodes) {
+    // Remove entries (and their expanded state) for macros that are no
+    // longer tracked or no longer exist.
+    for (const [id, entry] of this._catalogNodes) {
       if (!seen.has(id)) {
-        li.remove();
+        entry.li.remove();
         this._catalogNodes.delete(id);
+        this._catalogExpanded.delete(id);
       }
     }
+  }
+
+  _buildCatalogEntry(macroId) {
+    const li = document.createElement('li');
+    li.dataset.macroId = String(macroId);
+
+    const rowMain = document.createElement('div');
+    rowMain.className = 'cat-row-main';
+
+    const titles = document.createElement('div');
+    titles.className = 'cat-titles';
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'cat-title';
+    const subEl = document.createElement('span');
+    subEl.className = 'cat-sub';
+    titles.appendChild(titleEl);
+    titles.appendChild(subEl);
+
+    const chevron = document.createElement('button');
+    chevron.type = 'button';
+    chevron.className = 'cat-chevron';
+    chevron.setAttribute('aria-label', 'Toggle history');
+    chevron.textContent = '\u25B8'; // ▸
+
+    rowMain.appendChild(titles);
+    rowMain.appendChild(chevron);
+
+    const timelineEl = document.createElement('div');
+    timelineEl.className = 'cat-timeline';
+    timelineEl.hidden = true;
+
+    li.appendChild(rowMain);
+    li.appendChild(timelineEl);
+
+    // Click on titles (or anywhere not the chevron) pins the inspector.
+    titles.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof this.onCatalogEntryClick === 'function') {
+        this.onCatalogEntryClick(macroId);
+      }
+    });
+    // Chevron toggles the expanded state without pinning.
+    chevron.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!this._catalogExpanded) this._catalogExpanded = new Set();
+      if (this._catalogExpanded.has(macroId)) this._catalogExpanded.delete(macroId);
+      else this._catalogExpanded.add(macroId);
+    });
+
+    return { li, titleEl, subEl, timelineEl };
+  }
+
+  _renderTimelineInto(container, m) {
+    // Cheap diff: if we already rendered this length, only the last events
+    // could be new. Compare child count and event count; if they match, do
+    // nothing this frame. (Mass / years in earlier events are immutable.)
+    const events = Array.isArray(m.history) ? m.history : [];
+    if (container.childElementCount === events.length &&
+        container.dataset.macroId === String(m.id)) {
+      return;
+    }
+    container.dataset.macroId = String(m.id);
+    container.innerHTML = '';
+    for (const ev of events) {
+      const row = document.createElement('div');
+      row.className = 'cat-event';
+      row.setAttribute('data-kind', ev.kind);
+
+      const yearEl = document.createElement('span');
+      yearEl.className = 'cat-event-year';
+      const year = Math.max(0, Math.floor((ev.atS || 0) * YEARS_PER_SECOND));
+      yearEl.textContent = `Year ${year.toLocaleString()}`;
+
+      const labelEl = document.createElement('span');
+      labelEl.className = 'cat-event-label';
+      labelEl.textContent = this._labelForHistoryEvent(ev);
+
+      row.appendChild(yearEl);
+      row.appendChild(labelEl);
+      container.appendChild(row);
+    }
+  }
+
+  _labelForHistoryEvent(ev) {
+    const mass = (typeof ev.mass === 'number') ? Math.round(ev.mass) : 0;
+    if (ev.kind === 'born') {
+      return `Coalesced as Structure (mass ${mass})`;
+    }
+    if (ev.kind === 'born-cradle') {
+      return `Coalesced as Cradle (mass ${mass})`;
+    }
+    if (ev.kind === 'cradle') {
+      return `Crossed Cradle threshold (mass ${mass})`;
+    }
+    if (ev.kind === 'absorbed') {
+      const target = ev.targetName || 'an unnamed body';
+      return `Absorbed ${target} (+${mass} mass)`;
+    }
+    return 'Event';
   }
 
   render(state) {

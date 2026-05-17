@@ -853,6 +853,20 @@ body {
 #catalog-list li[data-kind="cradle"].is-pinned {
   border-left-color: #ffd49b;
 }
+#catalog-list .cat-row-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+#catalog-list .cat-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
 #catalog-list .cat-title {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.92);
@@ -866,6 +880,64 @@ body {
   color: rgba(255, 255, 255, 0.5);
   letter-spacing: 0.4px;
   font-variant-numeric: tabular-nums;
+}
+#catalog-list .cat-chevron {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: rgba(199, 182, 255, 0.7);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  transition: color 0.15s ease, transform 0.2s ease;
+}
+#catalog-list .cat-chevron:hover {
+  color: #fff;
+}
+#catalog-list li.is-expanded .cat-chevron {
+  transform: rotate(90deg);
+  color: #fff;
+}
+#catalog-list .cat-timeline {
+  margin-top: 8px;
+  padding: 6px 0 2px 8px;
+  border-left: 1px solid rgba(184, 164, 255, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#catalog-list li[data-kind="cradle"] .cat-timeline {
+  border-left-color: rgba(255, 212, 155, 0.28);
+}
+#catalog-list .cat-event {
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.78);
+}
+#catalog-list .cat-event-year {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: rgba(199, 182, 255, 0.7);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 1px;
+}
+#catalog-list .cat-event[data-kind="born"] .cat-event-year,
+#catalog-list .cat-event[data-kind="born-cradle"] .cat-event-year {
+  color: rgba(199, 182, 255, 0.95);
+}
+#catalog-list .cat-event[data-kind="cradle"] .cat-event-year,
+#catalog-list .cat-event[data-kind="born-cradle"] .cat-event-year {
+  color: rgba(255, 212, 155, 0.95);
+}
+#catalog-list .cat-event-label {
+  display: block;
+  word-break: break-word;
 }
 .catalog-empty {
   font-size: 12px;
