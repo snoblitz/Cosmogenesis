@@ -81,7 +81,15 @@
     <div id="whisper"></div>
 
     <button id="settings-btn" title="Global settings">⚙</button>
-    <button id="mute-btn" title="Mute audio (M)">🔊</button>
+    <button id="mute-btn" title="Mute audio (M)" aria-pressed="false">
+      <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g class="icon-glyph" fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h2.2L8.5 3v10L5.2 10H3z" stroke-width="1" />
+          <path d="M10.5 5.5c1 .8 1.6 1.9 1.6 3s-.6 2.2-1.6 3" fill="none" stroke-width="1.2"/>
+        </g>
+        <line class="icon-strike" x1="1.5" y1="14.5" x2="14.5" y2="1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+    </button>
     <button id="reset-btn" title="Begin a new universe">↻</button>
 
     <div id="settings-panel" class="panel">

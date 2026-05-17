@@ -482,12 +482,13 @@ document.addEventListener('visibilitychange', () => {
 window.__cosmogenesis_disableSave = () => { savingDisabled = true; };
 
 // --- Mute button (bottom-right, above settings) ---
+// Uses the same speaker-with-diagonal-strike iconography as the radio lens
+// instrument toggle. CSS handles the strike fade-in via the .muted class.
 const muteBtn = document.getElementById('mute-btn');
 function syncMuteBtn() {
   if (!muteBtn) return;
   const muted = !!audio.muted;
   muteBtn.classList.toggle('muted', muted);
-  muteBtn.textContent = muted ? '🔇' : '🔊';
   muteBtn.title = muted ? 'Unmute audio (M)' : 'Mute audio (M)';
   muteBtn.setAttribute('aria-pressed', muted ? 'true' : 'false');
 }
