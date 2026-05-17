@@ -883,24 +883,36 @@ body {
 }
 #catalog-list .cat-chevron {
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  margin-top: 1px;
+  width: 32px;
+  height: 32px;
+  margin: -4px -4px -4px 0;
   padding: 0;
   background: transparent;
-  border: none;
-  color: rgba(199, 182, 255, 0.7);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: rgba(199, 182, 255, 0.85);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1;
-  transition: color 0.15s ease, transform 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, transform 0.2s ease;
 }
 #catalog-list .cat-chevron:hover {
   color: #fff;
+  background: rgba(184, 164, 255, 0.18);
+  border-color: rgba(184, 164, 255, 0.35);
 }
 #catalog-list li.is-expanded .cat-chevron {
   transform: rotate(90deg);
   color: #fff;
+  background: rgba(184, 164, 255, 0.14);
+}
+#catalog-list li[data-kind="cradle"] .cat-chevron:hover,
+#catalog-list li[data-kind="cradle"].is-expanded .cat-chevron {
+  background: rgba(255, 212, 155, 0.16);
+  border-color: rgba(255, 212, 155, 0.35);
 }
 #catalog-list .cat-timeline {
   margin-top: 8px;
