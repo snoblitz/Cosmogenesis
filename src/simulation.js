@@ -9,6 +9,10 @@ export const MAX_PARTICLES = 1500;      // hard performance ceiling
 export const MACRO_MASS_THRESHOLD = 70; // mass at which a particle promotes to a macro
 export const MAX_MACROS = 40;           // cap macros to keep render cheap
 export const MACRO_CRADLE_THRESHOLD = 500; // mass at which a macro is a "Cradle" (rare, meaningful)
+// Cosmic time scale: every real second of sim time represents this many years
+// in the player-facing universe. Internal dt math stays in real seconds; this
+// only affects what we *show* the player (auto-name suffix, ages, etc.).
+export const YEARS_PER_SECOND = 10;
 
 const DAMPING = 0.997;
 const TIME_SCALE = 60; // dt is seconds; multiply velocity by this so numbers feel right
@@ -175,11 +179,12 @@ export class Simulation {
   }
 
   _promoteToMacro(p) {
-    // Auto-name: kind reflects mass at creation, suffix is the current
-    // simulation timeline in seconds. Two macros born in the same second
-    // would collide; that's rare enough to accept, and the player can
-    // rename anything via the context menu.
+    // Auto-name: kind reflects mass at creation, suffix is the player-facing
+    // cosmic year at the moment of birth. We store bornAtS in real seconds
+    // (stable across changes to the conversion constant) and multiply for
+    // display so the name stays in cosmic units.
     const bornAtS = Math.max(0, Math.floor(this.totalElapsedS));
+    const bornAtYears = bornAtS * YEARS_PER_SECOND;
     const kind = p.mass >= MACRO_CRADLE_THRESHOLD ? 'Cradle' : 'Structure';
     return {
       id: this.nextId++,
@@ -192,7 +197,7 @@ export class Simulation {
       pulse: Math.random() * Math.PI * 2,
       absorbed: Math.round(p.mass),
       bornAtS,
-      name: `${kind}${bornAtS}`,
+      name: `${kind}${bornAtYears}`,
       tracked: false
     };
   }
@@ -204,7 +209,7 @@ export class Simulation {
       ? m.bornAtS
       : Math.max(0, Math.floor(this.totalElapsedS - (m.age || 0)));
     const kind = (m.mass || 0) >= MACRO_CRADLE_THRESHOLD ? 'Cradle' : 'Structure';
-    return `${kind}${bornAtS}`;
+    return `${kind}${bornAtS * YEARS_PER_SECOND}`;
   }
 
   setMacroName(id, name) {

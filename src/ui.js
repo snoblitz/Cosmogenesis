@@ -40,6 +40,7 @@ const INFO_TOOLTIPS = {
 };
 
 import { ERAS, FIRST_LIGHT_ERA } from './eras.js';
+import { YEARS_PER_SECOND } from './simulation.js';
 
 // Lookup: law text -> era definition. Lets _appendLaw attach the era's
 // `lawTooltip` to each list item without needing to track era index alongside
@@ -710,7 +711,7 @@ export class UI {
     if (this.elInspectorAbs && this.elInspectorAbs.textContent !== absStr) {
       this.elInspectorAbs.textContent = absStr;
     }
-    const ageStr = `${Math.round(data.age)}s`;
+    const ageStr = `${Math.round(data.age * YEARS_PER_SECOND)} yr`;
     if (this.elInspectorAge && this.elInspectorAge.textContent !== ageStr) {
       this.elInspectorAge.textContent = ageStr;
     }
