@@ -55,10 +55,18 @@
       </div>
     </div>
 
-    <div id="hud-top-right" class="panel">
-      <div class="laws-title">Discovered Laws</div>
-      <ul id="laws-list"></ul>
-      <div id="laws-empty" class="laws-empty">No laws yet observed.</div>
+    <div id="hud-top-right">
+      <div id="hud-laws" class="panel">
+        <div class="laws-title">Discovered Laws</div>
+        <ul id="laws-list"></ul>
+        <div id="laws-empty" class="laws-empty">No laws yet observed.</div>
+      </div>
+
+      <div id="hud-catalog" class="panel" hidden>
+        <div class="catalog-title">Catalog</div>
+        <ul id="catalog-list"></ul>
+        <div id="catalog-empty" class="catalog-empty">No bodies cataloged yet.</div>
+      </div>
     </div>
 
     <div id="hud-bottom">
@@ -78,7 +86,17 @@
     <div id="info-tooltip" role="dialog" aria-live="polite"></div>
 
     <div id="macro-inspector" role="dialog" aria-live="polite" hidden>
-      <span class="mi-kind">Structure</span>
+      <div class="mi-header">
+        <div class="mi-titles">
+          <span class="mi-name" hidden></span>
+          <span class="mi-kind">Structure</span>
+        </div>
+        <div class="mi-actions">
+          <button class="mi-track" type="button" aria-label="Track this body" aria-pressed="false">☆</button>
+          <button class="mi-edit" type="button" aria-label="Rename">✎</button>
+        </div>
+      </div>
+      <input class="mi-input" type="text" maxlength="40" placeholder="Name this body" hidden />
       <div class="mi-row"><span class="mi-label">Mass</span><span class="mi-value" data-mi="mass">0</span></div>
       <div class="mi-row"><span class="mi-label">Absorbed</span><span class="mi-value" data-mi="absorbed">0</span></div>
       <div class="mi-row"><span class="mi-label">Age</span><span class="mi-value" data-mi="age">0s</span></div>

@@ -180,8 +180,29 @@ export class Simulation {
       hue: p.hue,
       age: 0,
       pulse: Math.random() * Math.PI * 2,
-      absorbed: Math.round(p.mass)
+      absorbed: Math.round(p.mass),
+      name: null,
+      tracked: false
     };
+  }
+
+  setMacroName(id, name) {
+    for (const m of this.macros) {
+      if (m.id !== id) continue;
+      const trimmed = (name == null) ? '' : String(name).trim().slice(0, 40);
+      m.name = trimmed.length ? trimmed : null;
+      return true;
+    }
+    return false;
+  }
+
+  setMacroTracked(id, tracked) {
+    for (const m of this.macros) {
+      if (m.id !== id) continue;
+      m.tracked = !!tracked;
+      return true;
+    }
+    return false;
   }
 
   _mergeMacros() {
@@ -217,7 +238,9 @@ export class Simulation {
       macros: this.macros.map(m => ({
         id: m.id, x: m.x, y: m.y, vx: m.vx, vy: m.vy,
         mass: m.mass, r: m.r, hue: m.hue, age: m.age,
-        pulse: m.pulse, absorbed: m.absorbed
+        pulse: m.pulse, absorbed: m.absorbed,
+        name: m.name || null,
+        tracked: !!m.tracked
       })),
       nextId: this.nextId,
       eraLevel: this.eraLevel,

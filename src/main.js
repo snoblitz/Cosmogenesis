@@ -34,6 +34,26 @@ audio.setVolume(state.settings.radioVolume);
 audio.setSustain(state.settings.radioSustain);
 ui.setAudio(audio);
 
+// --- Wire inspector callbacks ---
+// Edit mode auto-pins so the panel sticks while the user types.
+ui.onMacroEditStart = (id) => {
+  inspectorPinId = id;
+};
+// Rename writes through to the sim and persists immediately.
+ui.onMacroRename = (id, newName) => {
+  sim.setMacroName(id, newName);
+  if (state.requestSave) state.requestSave();
+};
+// Track toggle writes through and persists.
+ui.onMacroTrackToggle = (id, nextTracked) => {
+  sim.setMacroTracked(id, nextTracked);
+  if (state.requestSave) state.requestSave();
+};
+// Clicking a Catalog entry pins the inspector to that body.
+ui.onCatalogEntryClick = (id) => {
+  inspectorPinId = id;
+};
+
 // Visual targets:
 //   - Before the lens is revealed: clean bright universe, no overlay.
 //   - Lens revealed, era < First Light: thermal overlay active.
@@ -174,6 +194,9 @@ function macroInspectorData(m, pinned) {
   const screen = renderer.worldToScreenCss(m.x, m.y);
   const macroRadiusCss = (m.r * renderer.zoom) / renderer.dpr;
   return {
+    id: m.id,
+    name: m.name || null,
+    tracked: !!m.tracked,
     kind: m.mass >= MACRO_CRADLE_THRESHOLD ? 'cradle' : 'structure',
     mass: m.mass,
     absorbed: m.absorbed,
@@ -379,6 +402,7 @@ function frame(now) {
   renderer.render(sim, state);
   ui.render(state);
   resolveInspector();
+  ui.renderCatalog(sim, inspectorPinId, MACRO_CRADLE_THRESHOLD);
 
   requestAnimationFrame(frame);
 }

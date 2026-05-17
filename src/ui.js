@@ -209,14 +209,32 @@ export class UI {
     this.elCanvas        = document.getElementById('universe');
     this.elInspector     = document.getElementById('macro-inspector');
     this.elInspectorKind = this.elInspector?.querySelector('.mi-kind') || null;
+    this.elInspectorName = this.elInspector?.querySelector('.mi-name') || null;
+    this.elInspectorEdit = this.elInspector?.querySelector('.mi-edit') || null;
+    this.elInspectorTrack= this.elInspector?.querySelector('.mi-track') || null;
+    this.elInspectorInput= this.elInspector?.querySelector('.mi-input') || null;
     this.elInspectorMass = this.elInspector?.querySelector('[data-mi="mass"]') || null;
     this.elInspectorAbs  = this.elInspector?.querySelector('[data-mi="absorbed"]') || null;
     this.elInspectorAge  = this.elInspector?.querySelector('[data-mi="age"]') || null;
     this.elInspectorFil  = this.elInspector?.querySelector('[data-mi="filaments"]') || null;
     this.elInspectorFilRow = this.elInspector?.querySelector('.mi-row-filaments') || null;
+    this.elCatalogPanel  = document.getElementById('hud-catalog');
+    this.elCatalogList   = document.getElementById('catalog-list');
+    this._catalogNodes   = new Map();   // macroId -> li
+    this._catalogPinnedId = null;        // for visual highlight sync
     this._inspectorVisible = false;
     this._inspectorWidth = 0;
     this._inspectorHeight = 0;
+    this._inspectorHovered = false;
+    this._inspectorEditing = false;
+    this._inspectorEditMacroId = null;
+    this._inspectorEditOriginalName = null;
+    // External callbacks set by main.js so the input layer can react.
+    this.onMacroEditStart    = null;  // (macroId) => void  (pin the macro)
+    this.onMacroRename       = null;  // (macroId, newName) => void
+    this.onMacroTrackToggle  = null;  // (macroId, nextTracked) => void
+    this.onCatalogEntryClick = null;  // (macroId) => void
+    this._wireInspector();
     this._renderedLawCount = 0;
     this._unlockNodes  = new Map();
     this._instrumentNodes = new Map();
@@ -637,13 +655,26 @@ export class UI {
   }
 
   // Show/hide/update the macro inspector panel. `data` is null to hide.
-  // `data` shape: { kind, mass, absorbed, age, filaments, screenX, screenY,
-  //                 macroRadiusCss, pinned }
+  // `data` shape: { id, kind, mass, absorbed, age, filaments, screenX, screenY,
+  //                 macroRadiusCss, pinned, name }
   setMacroInspector(data) {
     const el = this.elInspector;
     if (!el) return;
 
+    // While editing, the resolver is not allowed to hide or replace the
+    // panel. The user is busy typing into it; pulling it out would be cruel.
+    if (this._inspectorEditing) {
+      if (data && data.id === this._inspectorEditMacroId) {
+        // Keep position synced as the macro drifts; do not touch content.
+        this._positionInspector(data);
+      }
+      return;
+    }
+
     if (!data) {
+      // Don't hide if mouse is currently over the panel (so hover users can
+      // reach the pencil button).
+      if (this._inspectorHovered) return;
       if (this._inspectorVisible) {
         el.removeAttribute('data-visible');
         el.removeAttribute('data-pinned');
@@ -662,6 +693,19 @@ export class UI {
       this.elInspectorKind.textContent = kindLabel;
     }
     el.setAttribute('data-kind', data.kind);
+
+    // Named macros get their player-given name as the title; kind drops to subtitle.
+    const named = data.name && data.name.length > 0;
+    if (this.elInspectorName) {
+      if (named) {
+        if (this.elInspectorName.textContent !== data.name) {
+          this.elInspectorName.textContent = data.name;
+        }
+        this.elInspectorName.hidden = false;
+      } else {
+        this.elInspectorName.hidden = true;
+      }
+    }
 
     const massStr = Math.round(data.mass).toString();
     if (this.elInspectorMass && this.elInspectorMass.textContent !== massStr) {
@@ -690,8 +734,38 @@ export class UI {
     if (data.pinned) el.setAttribute('data-pinned', '1');
     else el.removeAttribute('data-pinned');
 
-    // Measure once content has rendered (cheap because contents are small).
-    // We use translate3d, never left/top, so this avoids layout thrash.
+    // Sync track-button state with macro.tracked.
+    if (this.elInspectorTrack) {
+      const isTracked = !!data.tracked;
+      this.elInspectorTrack.setAttribute('aria-pressed', isTracked ? 'true' : 'false');
+      const glyph = isTracked ? '★' : '☆';
+      if (this.elInspectorTrack.textContent !== glyph) {
+        this.elInspectorTrack.textContent = glyph;
+      }
+      this.elInspectorTrack.title = isTracked ? 'Untrack' : 'Add to Catalog';
+    }
+
+    // Stash the macro id on the element so handlers (pencil click, etc.) can
+    // read it without going through closures.
+    el.dataset.macroId = data.id != null ? String(data.id) : '';
+
+    this._positionInspector(data, wasHidden);
+
+    if (!this._inspectorVisible) {
+      // Defer the visible flag a tick so opacity transition runs even on first show.
+      requestAnimationFrame(() => {
+        if (!el.hidden) el.setAttribute('data-visible', '1');
+      });
+      this._inspectorVisible = true;
+    }
+  }
+
+  _positionInspector(data, wasHidden = false) {
+    const el = this.elInspector;
+    if (!el) return;
+    // Measure when first shown or after content change. The named-vs-unnamed
+    // toggle and filament row visibility both change height, so re-measure
+    // whenever data shape might shift. Cheap for a small panel.
     if (wasHidden || this._inspectorWidth === 0) {
       const rect = el.getBoundingClientRect();
       this._inspectorWidth  = rect.width;
@@ -705,24 +779,221 @@ export class UI {
     let x = data.screenX + offset;
     let y = data.screenY - this._inspectorHeight / 2;
 
-    // Flip to left side if it would clip the right edge.
     if (x + this._inspectorWidth > vw - pad) {
       x = data.screenX - offset - this._inspectorWidth;
     }
-    // Clamp vertically + horizontally inside viewport with a small margin.
     if (x < pad) x = pad;
     if (x + this._inspectorWidth > vw - pad) x = vw - pad - this._inspectorWidth;
     if (y < pad) y = pad;
     if (y + this._inspectorHeight > vh - pad) y = vh - pad - this._inspectorHeight;
 
     el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+  }
 
-    if (!this._inspectorVisible) {
-      // Defer the visible flag a tick so opacity transition runs even on first show.
-      requestAnimationFrame(() => {
-        if (!el.hidden) el.setAttribute('data-visible', '1');
+  // Hook up the pencil button + input handlers. Called once from the constructor.
+  _wireInspector() {
+    const el = this.elInspector;
+    if (!el) return;
+
+    // Hover tracking: mouse over the panel keeps it visible even when the
+    // pointer has left the underlying macro. Lets the user reach the pencil.
+    el.addEventListener('pointerenter', (e) => {
+      if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return;
+      this._inspectorHovered = true;
+    });
+    el.addEventListener('pointerleave', (e) => {
+      if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return;
+      this._inspectorHovered = false;
+    });
+
+    // Prevent inspector clicks from bubbling to the canvas (which would
+    // spawn or dismiss the pin).
+    el.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+    if (this.elInspectorEdit) {
+      this.elInspectorEdit.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = el.dataset.macroId ? Number(el.dataset.macroId) : null;
+        if (id == null || Number.isNaN(id)) return;
+        this._enterEditMode(id);
       });
-      this._inspectorVisible = true;
+    }
+
+    if (this.elInspectorTrack) {
+      this.elInspectorTrack.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = el.dataset.macroId ? Number(el.dataset.macroId) : null;
+        if (id == null || Number.isNaN(id)) return;
+        const next = this.elInspectorTrack.getAttribute('aria-pressed') !== 'true';
+        // Optimistically reflect locally; main.js callback will persist.
+        this.elInspectorTrack.setAttribute('aria-pressed', next ? 'true' : 'false');
+        this.elInspectorTrack.textContent = next ? '★' : '☆';
+        if (typeof this.onMacroTrackToggle === 'function') {
+          this.onMacroTrackToggle(id, next);
+        }
+      });
+    }
+
+    if (this.elInspectorInput) {
+      this.elInspectorInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this._commitEdit();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          this._cancelEdit();
+        }
+      });
+      this.elInspectorInput.addEventListener('blur', () => {
+        // Treat focus loss as commit. If the user pressed Escape we already
+        // exited edit mode and reset _inspectorEditing, so this is a no-op.
+        if (this._inspectorEditing) this._commitEdit();
+      });
+    }
+  }
+
+  _enterEditMode(macroId) {
+    if (!this.elInspectorInput) return;
+    this._inspectorEditing = true;
+    this._inspectorEditMacroId = macroId;
+    // Pin so the panel sticks while the keyboard is up / user is typing.
+    if (typeof this.onMacroEditStart === 'function') {
+      this.onMacroEditStart(macroId);
+    }
+    // Pre-fill with current name if any.
+    const currentName = (this.elInspectorName && !this.elInspectorName.hidden)
+      ? this.elInspectorName.textContent || ''
+      : '';
+    this._inspectorEditOriginalName = currentName;
+    this.elInspectorInput.value = currentName;
+    this.elInspectorInput.hidden = false;
+    if (this.elInspector) this.elInspector.setAttribute('data-editing', '1');
+    // Focus on next tick so the show transition has a chance to run.
+    requestAnimationFrame(() => {
+      try {
+        this.elInspectorInput.focus();
+        this.elInspectorInput.select();
+      } catch (_) { /* ignore */ }
+    });
+  }
+
+  _commitEdit() {
+    if (!this._inspectorEditing) return;
+    const id = this._inspectorEditMacroId;
+    const value = this.elInspectorInput ? this.elInspectorInput.value : '';
+    this._exitEditMode();
+    if (typeof this.onMacroRename === 'function' && id != null) {
+      this.onMacroRename(id, value);
+    }
+  }
+
+  _cancelEdit() {
+    this._exitEditMode();
+  }
+
+  _exitEditMode() {
+    this._inspectorEditing = false;
+    this._inspectorEditMacroId = null;
+    this._inspectorEditOriginalName = null;
+    if (this.elInspectorInput) {
+      this.elInspectorInput.hidden = true;
+      this.elInspectorInput.value = '';
+      this.elInspectorInput.blur();
+    }
+    if (this.elInspector) this.elInspector.removeAttribute('data-editing');
+    // Force re-measure on next show because input row affects height.
+    this._inspectorWidth = 0;
+    this._inspectorHeight = 0;
+  }
+
+  // Returns true if the inspector is in edit mode. Main.js consults this so
+  // it doesn't try to dismiss the pin underneath the user.
+  isInspectorEditing() { return this._inspectorEditing; }
+
+  // Build / refresh the Catalog panel. Lists every macro with `tracked=true`.
+  // Each entry shows the player-given name (or a "Kind #id" fallback), a
+  // subtitle with kind + current mass, and click-pins the inspector to it.
+  // Re-uses DOM nodes between frames so it's cheap to call every frame.
+  renderCatalog(sim, pinnedId, cradleThreshold) {
+    if (!this.elCatalogList || !this.elCatalogPanel || !sim) return;
+
+    const tracked = [];
+    for (const m of sim.macros) if (m.tracked) tracked.push(m);
+
+    // Hide the whole panel until the player tracks something. Keeps the HUD
+    // clean for new players.
+    const want = tracked.length > 0;
+    if (this.elCatalogPanel.hidden !== !want) this.elCatalogPanel.hidden = !want;
+    if (!want) {
+      if (this._catalogNodes.size) {
+        this.elCatalogList.innerHTML = '';
+        this._catalogNodes.clear();
+      }
+      return;
+    }
+
+    // Sort: cradles first (rarer/more meaningful), then by mass desc.
+    tracked.sort((a, b) => {
+      const ka = a.mass >= cradleThreshold ? 1 : 0;
+      const kb = b.mass >= cradleThreshold ? 1 : 0;
+      if (ka !== kb) return kb - ka;
+      return b.mass - a.mass;
+    });
+
+    const seen = new Set();
+    let prevNode = null;
+    for (const m of tracked) {
+      seen.add(m.id);
+      let li = this._catalogNodes.get(m.id);
+      if (!li) {
+        li = document.createElement('li');
+        li.dataset.macroId = String(m.id);
+        const title = document.createElement('span');
+        title.className = 'cat-title';
+        const sub = document.createElement('span');
+        sub.className = 'cat-sub';
+        li.appendChild(title);
+        li.appendChild(sub);
+        li.addEventListener('click', () => {
+          if (typeof this.onCatalogEntryClick === 'function') {
+            this.onCatalogEntryClick(m.id);
+          }
+        });
+        this._catalogNodes.set(m.id, li);
+      }
+      const kind = m.mass >= cradleThreshold ? 'cradle' : 'structure';
+      if (li.dataset.kind !== kind) li.dataset.kind = kind;
+      const isPinned = (pinnedId != null && pinnedId === m.id);
+      li.classList.toggle('is-pinned', isPinned);
+
+      const titleEl = li.firstChild;
+      const subEl   = li.lastChild;
+      const titleText = m.name && m.name.length
+        ? m.name
+        : `${kind === 'cradle' ? 'Cradle' : 'Structure'} #${m.id}`;
+      if (titleEl.textContent !== titleText) titleEl.textContent = titleText;
+
+      const kindLabel = kind === 'cradle' ? 'Cradle' : 'Structure';
+      const massStr = fmt(Math.round(m.mass));
+      const subText = m.name && m.name.length
+        ? `${kindLabel} \u00b7 ${massStr} mass`
+        : `${massStr} mass`;
+      if (subEl.textContent !== subText) subEl.textContent = subText;
+
+      // Maintain sort order in the DOM.
+      const nextSibling = prevNode ? prevNode.nextSibling : this.elCatalogList.firstChild;
+      if (li !== nextSibling) {
+        this.elCatalogList.insertBefore(li, nextSibling);
+      }
+      prevNode = li;
+    }
+
+    // Remove entries for macros that are no longer tracked (or no longer exist).
+    for (const [id, li] of this._catalogNodes) {
+      if (!seen.has(id)) {
+        li.remove();
+        this._catalogNodes.delete(id);
+      }
     }
   }
 
