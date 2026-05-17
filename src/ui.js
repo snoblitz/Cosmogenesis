@@ -74,6 +74,13 @@ const INSTRUMENT_ICONS = {
   </svg>`
 };
 
+// Small arched-top headstone, drawn in currentColor. Used as a death marker
+// next to absorbed bodies in the catalog timeline.
+const TOMBSTONE_SVG = `<svg viewBox="0 0 12 14" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <path d="M2 6 Q2 1.5 6 1.5 Q10 1.5 10 6 L10 13 L2 13 Z" fill="currentColor"/>
+  <path d="M5 4.4 L7 4.4 M6 3.4 L6 5.4" stroke="rgba(0,0,0,0.35)" stroke-width="0.6" stroke-linecap="round" fill="none"/>
+</svg>`;
+
 // Instruments: observation tools the player actively wields (toggleable).
 // Each gets a clickable entry in the Instruments HUD panel. State-derived,
 // no separate persistence — always in sync with what's actually unlocked.
@@ -1126,12 +1133,38 @@ export class UI {
 
       const labelEl = document.createElement('span');
       labelEl.className = 'cat-event-label';
-      labelEl.textContent = this._labelForHistoryEvent(ev);
+      if (ev.kind === 'absorbed') {
+        this._fillAbsorbedLabel(labelEl, ev);
+      } else {
+        labelEl.textContent = this._labelForHistoryEvent(ev);
+      }
 
       row.appendChild(yearEl);
       row.appendChild(labelEl);
       container.appendChild(row);
     }
+  }
+
+  // Build the absorbed label as structured DOM so we can interleave a small
+  // tombstone glyph after the absorbed body's name.
+  _fillAbsorbedLabel(labelEl, ev) {
+    const mass = (typeof ev.mass === 'number') ? Math.round(ev.mass) : 0;
+    const target = ev.targetName || 'an unnamed body';
+    labelEl.appendChild(document.createTextNode('Absorbed '));
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'cat-event-name';
+    nameSpan.textContent = target;
+    labelEl.appendChild(nameSpan);
+
+    const tomb = document.createElement('span');
+    tomb.className = 'cat-event-tombstone';
+    tomb.setAttribute('aria-label', 'absorbed');
+    tomb.setAttribute('title', `${target} was absorbed`);
+    tomb.innerHTML = TOMBSTONE_SVG;
+    labelEl.appendChild(tomb);
+
+    labelEl.appendChild(document.createTextNode(` (+${mass} mass)`));
   }
 
   _labelForHistoryEvent(ev) {
