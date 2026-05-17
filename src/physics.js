@@ -7,10 +7,11 @@ const SOFTEN_SQ = 16;                 // softening to avoid singularities (4^2)
 const ATTRACTION_RANGE_SQ = 90 * 90;  // tied to grid cell size
 const MERGE_VEL_THRESHOLD = 5.5;      // relative speed below which a collision merges
 // Fraction of combined mass retained per merge. Each binding event releases
-// a little mass as radiation (binding energy). 4% loss reads as a meaningful
+// a little mass as radiation (binding energy). 3% loss reads as a meaningful
 // gap between Potential (taps you've made) and Matter (what the cosmos
-// currently holds) after sustained play, without feeling punishing.
-export const MERGE_RETENTION = 0.96;
+// currently holds) without crushing the sequential-accretion path to
+// promotion (steady state 0.97/0.03 ≈ 32 mass, above the 25 threshold).
+export const MERGE_RETENTION = 0.97;
 const MACRO_G = 4.0;                  // macro-objects pull much harder
 const MACRO_RANGE_SQ = 1300 * 1300;     // long-range macro influence on particles
 

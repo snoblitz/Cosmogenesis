@@ -6,7 +6,7 @@ import { applyAttraction, applyMacroPull, applyMacroMutualPull, tryMerges, MERGE
 
 export const GRID_SIZE = 90;            // spatial partition cell size (world px)
 export const MAX_PARTICLES = 1500;      // hard performance ceiling
-export const MACRO_MASS_THRESHOLD = 70; // mass at which a particle promotes to a macro
+export const MACRO_MASS_THRESHOLD = 25; // mass at which a particle promotes to a macro
 export const MAX_MACROS = 40;           // cap macros to keep render cheap
 export const MACRO_CRADLE_THRESHOLD = 500; // mass at which a macro is a "Cradle" (rare, meaningful)
 // Cosmic time scale: every real second of sim time represents this many years
