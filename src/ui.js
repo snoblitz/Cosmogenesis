@@ -210,14 +210,12 @@ export class UI {
     this.elInspector     = document.getElementById('macro-inspector');
     this.elInspectorKind = this.elInspector?.querySelector('.mi-kind') || null;
     this.elInspectorName = this.elInspector?.querySelector('.mi-name') || null;
-    this.elInspectorEdit = this.elInspector?.querySelector('.mi-edit') || null;
-    this.elInspectorTrack= this.elInspector?.querySelector('.mi-track') || null;
-    this.elInspectorInput= this.elInspector?.querySelector('.mi-input') || null;
     this.elInspectorMass = this.elInspector?.querySelector('[data-mi="mass"]') || null;
     this.elInspectorAbs  = this.elInspector?.querySelector('[data-mi="absorbed"]') || null;
     this.elInspectorAge  = this.elInspector?.querySelector('[data-mi="age"]') || null;
     this.elInspectorFil  = this.elInspector?.querySelector('[data-mi="filaments"]') || null;
     this.elInspectorFilRow = this.elInspector?.querySelector('.mi-row-filaments') || null;
+    this.elInspectorHint = this.elInspector?.querySelector('.mi-hint') || null;
     this.elCatalogPanel  = document.getElementById('hud-catalog');
     this.elCatalogList   = document.getElementById('catalog-list');
     this._catalogNodes   = new Map();   // macroId -> li
@@ -225,16 +223,24 @@ export class UI {
     this._inspectorVisible = false;
     this._inspectorWidth = 0;
     this._inspectorHeight = 0;
-    this._inspectorHovered = false;
-    this._inspectorEditing = false;
-    this._inspectorEditMacroId = null;
-    this._inspectorEditOriginalName = null;
+
+    // Context menu (right-click / long-press) DOM + state.
+    this.elContextMenu       = document.getElementById('macro-context-menu');
+    this.elContextMenuTitle  = this.elContextMenu?.querySelector('.mcm-title') || null;
+    this.elContextMenuActions= this.elContextMenu?.querySelector('.mcm-actions') || null;
+    this.elContextMenuRename = this.elContextMenu?.querySelector('.mcm-rename') || null;
+    this.elContextMenuInput  = this.elContextMenu?.querySelector('.mcm-input') || null;
+    this.elContextMenuTrackLabel = this.elContextMenu?.querySelector('.mcm-track-label') || null;
+    this.elContextMenuTrackGlyph = this.elContextMenu?.querySelector('.mcm-item[data-action="track"] .mcm-glyph') || null;
+    this._contextMenuOpen = false;
+    this._contextMenuMacroId = null;
+    this._contextMenuMode = 'actions'; // 'actions' | 'rename'
+
     // External callbacks set by main.js so the input layer can react.
-    this.onMacroEditStart    = null;  // (macroId) => void  (pin the macro)
     this.onMacroRename       = null;  // (macroId, newName) => void
     this.onMacroTrackToggle  = null;  // (macroId, nextTracked) => void
     this.onCatalogEntryClick = null;  // (macroId) => void
-    this._wireInspector();
+    this._wireContextMenu();
     this._renderedLawCount = 0;
     this._unlockNodes  = new Map();
     this._instrumentNodes = new Map();
@@ -655,26 +661,15 @@ export class UI {
   }
 
   // Show/hide/update the macro inspector panel. `data` is null to hide.
+  // The inspector is purely read-only; player actions (rename, track) live in
+  // the context menu (right-click / long-press).
   // `data` shape: { id, kind, mass, absorbed, age, filaments, screenX, screenY,
-  //                 macroRadiusCss, pinned, name }
+  //                 macroRadiusCss, pinned, name, hint? }
   setMacroInspector(data) {
     const el = this.elInspector;
     if (!el) return;
 
-    // While editing, the resolver is not allowed to hide or replace the
-    // panel. The user is busy typing into it; pulling it out would be cruel.
-    if (this._inspectorEditing) {
-      if (data && data.id === this._inspectorEditMacroId) {
-        // Keep position synced as the macro drifts; do not touch content.
-        this._positionInspector(data);
-      }
-      return;
-    }
-
     if (!data) {
-      // Don't hide if mouse is currently over the panel (so hover users can
-      // reach the pencil button).
-      if (this._inspectorHovered) return;
       if (this._inspectorVisible) {
         el.removeAttribute('data-visible');
         el.removeAttribute('data-pinned');
@@ -694,7 +689,6 @@ export class UI {
     }
     el.setAttribute('data-kind', data.kind);
 
-    // Named macros get their player-given name as the title; kind drops to subtitle.
     const named = data.name && data.name.length > 0;
     if (this.elInspectorName) {
       if (named) {
@@ -730,29 +724,25 @@ export class UI {
         this.elInspectorFilRow.hidden = true;
       }
     }
+    if (this.elInspectorHint) {
+      if (data.hint) {
+        if (this.elInspectorHint.textContent !== data.hint) {
+          this.elInspectorHint.textContent = data.hint;
+        }
+        this.elInspectorHint.hidden = false;
+      } else {
+        this.elInspectorHint.hidden = true;
+      }
+    }
 
     if (data.pinned) el.setAttribute('data-pinned', '1');
     else el.removeAttribute('data-pinned');
 
-    // Sync track-button state with macro.tracked.
-    if (this.elInspectorTrack) {
-      const isTracked = !!data.tracked;
-      this.elInspectorTrack.setAttribute('aria-pressed', isTracked ? 'true' : 'false');
-      const glyph = isTracked ? '★' : '☆';
-      if (this.elInspectorTrack.textContent !== glyph) {
-        this.elInspectorTrack.textContent = glyph;
-      }
-      this.elInspectorTrack.title = isTracked ? 'Untrack' : 'Add to Catalog';
-    }
-
-    // Stash the macro id on the element so handlers (pencil click, etc.) can
-    // read it without going through closures.
     el.dataset.macroId = data.id != null ? String(data.id) : '';
 
     this._positionInspector(data, wasHidden);
 
     if (!this._inspectorVisible) {
-      // Defer the visible flag a tick so opacity transition runs even on first show.
       requestAnimationFrame(() => {
         if (!el.hidden) el.setAttribute('data-visible', '1');
       });
@@ -763,9 +753,6 @@ export class UI {
   _positionInspector(data, wasHidden = false) {
     const el = this.elInspector;
     if (!el) return;
-    // Measure when first shown or after content change. The named-vs-unnamed
-    // toggle and filament row visibility both change height, so re-measure
-    // whenever data shape might shift. Cheap for a small panel.
     if (wasHidden || this._inspectorWidth === 0) {
       const rect = el.getBoundingClientRect();
       this._inspectorWidth  = rect.width;
@@ -790,125 +777,192 @@ export class UI {
     el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
   }
 
-  // Hook up the pencil button + input handlers. Called once from the constructor.
-  _wireInspector() {
-    const el = this.elInspector;
-    if (!el) return;
+  // ---- Context menu (right-click / long-press) ----
 
-    // Hover tracking: mouse over the panel keeps it visible even when the
-    // pointer has left the underlying macro. Lets the user reach the pencil.
-    el.addEventListener('pointerenter', (e) => {
-      if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return;
-      this._inspectorHovered = true;
-    });
-    el.addEventListener('pointerleave', (e) => {
-      if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return;
-      this._inspectorHovered = false;
-    });
+  _wireContextMenu() {
+    const menu = this.elContextMenu;
+    if (!menu) return;
 
-    // Prevent inspector clicks from bubbling to the canvas (which would
-    // spawn or dismiss the pin).
-    el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    // Clicks inside the menu must not bubble to the canvas, or the canvas
+    // would treat them as taps and spawn.
+    menu.addEventListener('pointerdown', (e) => e.stopPropagation());
+    menu.addEventListener('click', (e) => e.stopPropagation());
+    menu.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    if (this.elInspectorEdit) {
-      this.elInspectorEdit.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = el.dataset.macroId ? Number(el.dataset.macroId) : null;
-        if (id == null || Number.isNaN(id)) return;
-        this._enterEditMode(id);
+    if (this.elContextMenuActions) {
+      this.elContextMenuActions.addEventListener('click', (e) => {
+        const btn = e.target.closest('.mcm-item');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        if (action === 'rename') this._enterRenameMode();
+        else if (action === 'track') this._toggleTrackFromMenu();
       });
     }
 
-    if (this.elInspectorTrack) {
-      this.elInspectorTrack.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = el.dataset.macroId ? Number(el.dataset.macroId) : null;
-        if (id == null || Number.isNaN(id)) return;
-        const next = this.elInspectorTrack.getAttribute('aria-pressed') !== 'true';
-        // Optimistically reflect locally; main.js callback will persist.
-        this.elInspectorTrack.setAttribute('aria-pressed', next ? 'true' : 'false');
-        this.elInspectorTrack.textContent = next ? '★' : '☆';
-        if (typeof this.onMacroTrackToggle === 'function') {
-          this.onMacroTrackToggle(id, next);
-        }
-      });
-    }
-
-    if (this.elInspectorInput) {
-      this.elInspectorInput.addEventListener('keydown', (e) => {
+    if (this.elContextMenuInput) {
+      this.elContextMenuInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          this._commitEdit();
+          this._commitRename();
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          this._cancelEdit();
+          this.hideMacroContextMenu();
         }
       });
-      this.elInspectorInput.addEventListener('blur', () => {
-        // Treat focus loss as commit. If the user pressed Escape we already
-        // exited edit mode and reset _inspectorEditing, so this is a no-op.
-        if (this._inspectorEditing) this._commitEdit();
-      });
+      // Form submit also commits (mobile keyboard "go" button).
+      const form = this.elContextMenuRename;
+      if (form) {
+        form.addEventListener('submit', (e) => {
+          e.preventDefault();
+          this._commitRename();
+        });
+      }
     }
-  }
 
-  _enterEditMode(macroId) {
-    if (!this.elInspectorInput) return;
-    this._inspectorEditing = true;
-    this._inspectorEditMacroId = macroId;
-    // Pin so the panel sticks while the keyboard is up / user is typing.
-    if (typeof this.onMacroEditStart === 'function') {
-      this.onMacroEditStart(macroId);
-    }
-    // Pre-fill with current name if any.
-    const currentName = (this.elInspectorName && !this.elInspectorName.hidden)
-      ? this.elInspectorName.textContent || ''
-      : '';
-    this._inspectorEditOriginalName = currentName;
-    this.elInspectorInput.value = currentName;
-    this.elInspectorInput.hidden = false;
-    if (this.elInspector) this.elInspector.setAttribute('data-editing', '1');
-    // Focus on next tick so the show transition has a chance to run.
-    requestAnimationFrame(() => {
-      try {
-        this.elInspectorInput.focus();
-        this.elInspectorInput.select();
-      } catch (_) { /* ignore */ }
+    // Global dismiss: any pointerdown outside the menu closes it AND
+    // suppresses the underlying canvas event (so closing the menu doesn't
+    // also spawn a particle).
+    document.addEventListener('pointerdown', (e) => {
+      if (!this._contextMenuOpen) return;
+      if (menu.contains(e.target)) return;
+      this.hideMacroContextMenu();
+      e.stopPropagation();
+      e.preventDefault();
+    }, true); // capture phase so we run before canvas handlers
+
+    // Escape closes from anywhere.
+    document.addEventListener('keydown', (e) => {
+      if (!this._contextMenuOpen) return;
+      if (e.key === 'Escape') this.hideMacroContextMenu();
     });
   }
 
-  _commitEdit() {
-    if (!this._inspectorEditing) return;
-    const id = this._inspectorEditMacroId;
-    const value = this.elInspectorInput ? this.elInspectorInput.value : '';
-    this._exitEditMode();
+  // opts: { macroId, screenX, screenY, kind, name, tracked }
+  showMacroContextMenu(opts) {
+    const menu = this.elContextMenu;
+    if (!menu || !opts) return;
+
+    this._contextMenuMacroId = opts.macroId;
+    this._contextMenuOpen = true;
+    this._contextMenuMode = 'actions';
+
+    menu.setAttribute('data-kind', opts.kind || 'structure');
+    menu.setAttribute('data-tracked', opts.tracked ? '1' : '0');
+
+    if (this.elContextMenuTitle) {
+      const title = opts.name && opts.name.length
+        ? opts.name
+        : (opts.kind === 'cradle' ? 'Cradle' : 'Structure');
+      if (this.elContextMenuTitle.textContent !== title) {
+        this.elContextMenuTitle.textContent = title;
+      }
+    }
+    if (this.elContextMenuTrackLabel) {
+      this.elContextMenuTrackLabel.textContent = opts.tracked ? 'Untrack' : 'Track';
+    }
+    if (this.elContextMenuTrackGlyph) {
+      this.elContextMenuTrackGlyph.textContent = opts.tracked ? '★' : '☆';
+    }
+
+    // Start in actions mode (not rename) on every show.
+    if (this.elContextMenuActions) this.elContextMenuActions.hidden = false;
+    if (this.elContextMenuRename)  this.elContextMenuRename.hidden  = true;
+
+    menu.hidden = false;
+    this._contextMenuLastX = opts.screenX;
+    this._contextMenuLastY = opts.screenY;
+    this._positionContextMenu(opts.screenX, opts.screenY);
+    requestAnimationFrame(() => {
+      if (!menu.hidden) {
+        menu.setAttribute('data-visible', '1');
+        // Re-position now that the visible scale is final.
+        this._positionContextMenu(this._contextMenuLastX, this._contextMenuLastY);
+      }
+    });
+  }
+
+  hideMacroContextMenu() {
+    const menu = this.elContextMenu;
+    if (!menu || !this._contextMenuOpen) return;
+    this._contextMenuOpen = false;
+    this._contextMenuMacroId = null;
+    this._contextMenuMode = 'actions';
+    menu.removeAttribute('data-visible');
+    menu.hidden = true;
+    if (this.elContextMenuInput) {
+      this.elContextMenuInput.value = '';
+      this.elContextMenuInput.blur();
+    }
+  }
+
+  isContextMenuOpen() { return this._contextMenuOpen; }
+
+  _positionContextMenu(sx, sy) {
+    const menu = this.elContextMenu;
+    if (!menu) return;
+    // Measure now that content/mode is set.
+    const rect = menu.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pad = 8;
+    let x = sx;
+    let y = sy;
+    if (x + w > vw - pad) x = vw - pad - w;
+    if (x < pad) x = pad;
+    if (y + h > vh - pad) y = vh - pad - h;
+    if (y < pad) y = pad;
+    // Preserve the open-scale transform so the entrance animation reads.
+    const visible = menu.getAttribute('data-visible') === '1';
+    const scale = visible ? 1 : 0.96;
+    menu.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0) scale(${scale})`;
+  }
+
+  _enterRenameMode() {
+    if (!this.elContextMenu) return;
+    this._contextMenuMode = 'rename';
+    if (this.elContextMenuActions) this.elContextMenuActions.hidden = true;
+    if (this.elContextMenuRename)  this.elContextMenuRename.hidden  = false;
+    if (this.elContextMenuInput) {
+      // Pre-fill with current name if known (read from inspector title since
+      // it stays in sync, or fall back to empty).
+      const currentName = (this.elInspectorName && !this.elInspectorName.hidden)
+        ? this.elInspectorName.textContent || ''
+        : '';
+      this.elContextMenuInput.value = currentName;
+      requestAnimationFrame(() => {
+        try {
+          this.elContextMenuInput.focus();
+          this.elContextMenuInput.select();
+        } catch (_) { /* ignore */ }
+      });
+    }
+    // Re-measure + reposition: rename mode usually changes height.
+    if (this._contextMenuLastX != null) {
+      this._positionContextMenu(this._contextMenuLastX, this._contextMenuLastY);
+    }
+  }
+
+  _commitRename() {
+    const id = this._contextMenuMacroId;
+    const value = this.elContextMenuInput ? this.elContextMenuInput.value : '';
     if (typeof this.onMacroRename === 'function' && id != null) {
       this.onMacroRename(id, value);
     }
+    this.hideMacroContextMenu();
   }
 
-  _cancelEdit() {
-    this._exitEditMode();
-  }
-
-  _exitEditMode() {
-    this._inspectorEditing = false;
-    this._inspectorEditMacroId = null;
-    this._inspectorEditOriginalName = null;
-    if (this.elInspectorInput) {
-      this.elInspectorInput.hidden = true;
-      this.elInspectorInput.value = '';
-      this.elInspectorInput.blur();
+  _toggleTrackFromMenu() {
+    const id = this._contextMenuMacroId;
+    if (id == null) return;
+    const menu = this.elContextMenu;
+    const nextTracked = !(menu.getAttribute('data-tracked') === '1');
+    if (typeof this.onMacroTrackToggle === 'function') {
+      this.onMacroTrackToggle(id, nextTracked);
     }
-    if (this.elInspector) this.elInspector.removeAttribute('data-editing');
-    // Force re-measure on next show because input row affects height.
-    this._inspectorWidth = 0;
-    this._inspectorHeight = 0;
+    this.hideMacroContextMenu();
   }
-
-  // Returns true if the inspector is in edit mode. Main.js consults this so
-  // it doesn't try to dismiss the pin underneath the user.
-  isInspectorEditing() { return this._inspectorEditing; }
 
   // Build / refresh the Catalog panel. Lists every macro with `tracked=true`.
   // Each entry shows the player-given name (or a "Kind #id" fallback), a

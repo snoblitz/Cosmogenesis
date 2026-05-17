@@ -91,16 +91,30 @@
           <span class="mi-name" hidden></span>
           <span class="mi-kind">Structure</span>
         </div>
-        <div class="mi-actions">
-          <button class="mi-track" type="button" aria-label="Track this body" aria-pressed="false">☆</button>
-          <button class="mi-edit" type="button" aria-label="Rename">✎</button>
-        </div>
       </div>
-      <input class="mi-input" type="text" maxlength="40" placeholder="Name this body" hidden />
       <div class="mi-row"><span class="mi-label">Mass</span><span class="mi-value" data-mi="mass">0</span></div>
       <div class="mi-row"><span class="mi-label">Absorbed</span><span class="mi-value" data-mi="absorbed">0</span></div>
       <div class="mi-row"><span class="mi-label">Age</span><span class="mi-value" data-mi="age">0s</span></div>
       <div class="mi-row mi-row-filaments" hidden><span class="mi-label">Filaments</span><span class="mi-value" data-mi="filaments">0</span></div>
+      <div class="mi-hint" hidden></div>
+    </div>
+
+    <div id="macro-context-menu" role="menu" hidden>
+      <div class="mcm-header">
+        <span class="mcm-title">Structure</span>
+      </div>
+      <div class="mcm-actions">
+        <button type="button" class="mcm-item" data-action="rename" role="menuitem">
+          <span class="mcm-glyph">✎</span><span>Rename</span>
+        </button>
+        <button type="button" class="mcm-item" data-action="track" role="menuitem">
+          <span class="mcm-glyph">☆</span><span class="mcm-track-label">Track</span>
+        </button>
+      </div>
+      <form class="mcm-rename" hidden>
+        <input type="text" class="mcm-input" maxlength="40" placeholder="Name this body" />
+        <div class="mcm-rename-hint">Enter to save · Esc to cancel</div>
+      </form>
     </div>
 
     <div id="discovery-banner"></div>

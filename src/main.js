@@ -34,22 +34,15 @@ audio.setVolume(state.settings.radioVolume);
 audio.setSustain(state.settings.radioSustain);
 ui.setAudio(audio);
 
-// --- Wire inspector callbacks ---
-// Edit mode auto-pins so the panel sticks while the user types.
-ui.onMacroEditStart = (id) => {
-  inspectorPinId = id;
-};
-// Rename writes through to the sim and persists immediately.
+// --- Wire inspector + context-menu callbacks ---
 ui.onMacroRename = (id, newName) => {
   sim.setMacroName(id, newName);
   if (state.requestSave) state.requestSave();
 };
-// Track toggle writes through and persists.
 ui.onMacroTrackToggle = (id, nextTracked) => {
   sim.setMacroTracked(id, nextTracked);
   if (state.requestSave) state.requestSave();
 };
-// Clicking a Catalog entry pins the inspector to that body.
 ui.onCatalogEntryClick = (id) => {
   inspectorPinId = id;
 };
@@ -124,6 +117,20 @@ let pendingPinId = null;
 let pendingPinStart = null; // { x, y, pointerId, t }
 const TAP_SLOP_PX = 10;     // CSS pixels of movement allowed before tap → drag
 const TAP_MAX_MS = 600;     // beyond this, a held finger no longer pins
+const LONG_PRESS_MS = 550;  // touch/pen hold-to-open-context-menu threshold
+
+// Long-press timer. When a touch starts on a macro and stays still for
+// LONG_PRESS_MS, fire the context menu and cancel the pending pin.
+let longPressTimer = null;
+let longPressMacroId = null;
+let longPressOrigin = null; // { clientX, clientY }
+
+function clearLongPress() {
+  if (longPressTimer) clearTimeout(longPressTimer);
+  longPressTimer = null;
+  longPressMacroId = null;
+  longPressOrigin = null;
+}
 
 function eventToScreen(e) {
   const rect = canvas.getBoundingClientRect();
@@ -193,6 +200,12 @@ function macroInspectorData(m, pinned) {
   }
   const screen = renderer.worldToScreenCss(m.x, m.y);
   const macroRadiusCss = (m.r * renderer.zoom) / renderer.dpr;
+  // Subtle one-line discovery hint. Tailored to the input device that most
+  // recently moved the pointer; phrasing is intentionally quiet so the panel
+  // stays calm.
+  let hint = null;
+  if (lastPointerType === 'touch') hint = 'Hold for options';
+  else                              hint = 'Right-click for options';
   return {
     id: m.id,
     name: m.name || null,
@@ -202,6 +215,7 @@ function macroInspectorData(m, pinned) {
     absorbed: m.absorbed,
     age: m.age,
     filaments: fil,
+    hint,
     screenX: screen.x,
     screenY: screen.y,
     macroRadiusCss,
@@ -246,7 +260,21 @@ function resolveInspector() {
   else   ui.setMacroInspector(null);
 }
 
+function macroMenuOpts(m, clientX, clientY) {
+  return {
+    macroId: m.id,
+    screenX: clientX,
+    screenY: clientY,
+    kind: m.mass >= MACRO_CRADLE_THRESHOLD ? 'cradle' : 'structure',
+    name: m.name || null,
+    tracked: !!m.tracked
+  };
+}
+
 canvas.addEventListener('pointerdown', (e) => {
+  // Only the left mouse button spawns/pins; right-click is handled by the
+  // contextmenu listener below.
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
   e.preventDefault();
   const { x, y } = eventToScreen(e);
   screenPos.x = x;
@@ -255,13 +283,29 @@ canvas.addEventListener('pointerdown', (e) => {
   lastPointerType = e.pointerType || 'mouse';
 
   // Touch (or pen) on a macro: tentative pin. We hold off spawning until the
-  // pointer either lifts (confirming the tap) or moves past the slop (drag).
+  // pointer either lifts (confirming the tap), moves past the slop (drag), or
+  // is held long enough to open the context menu.
   if ((lastPointerType === 'touch' || lastPointerType === 'pen') && inspectorAllowed()) {
     const m = pickMacroAtScreen(x, y, 16);
     if (m) {
       pendingPinId = m.id;
       pendingPinStart = { x, y, pointerId: e.pointerId, t: performance.now() };
       canvas.setPointerCapture(e.pointerId);
+
+      // Schedule long-press: if the user holds still, open the context menu.
+      longPressMacroId = m.id;
+      longPressOrigin = { clientX: e.clientX, clientY: e.clientY };
+      longPressTimer = setTimeout(() => {
+        // Re-validate: macro might have moved or merged; refetch by id.
+        const mNow = findMacroById(longPressMacroId);
+        if (!mNow) { clearLongPress(); return; }
+        // Cancel the pending pin: long-press wins.
+        pendingPinId = null;
+        pendingPinStart = null;
+        ui.showMacroContextMenu(macroMenuOpts(mNow, longPressOrigin.clientX, longPressOrigin.clientY));
+        clearLongPress();
+      }, LONG_PRESS_MS);
+
       return; // no spawn, no hold yet
     }
   }
@@ -275,6 +319,18 @@ canvas.addEventListener('pointerdown', (e) => {
   spawnAtScreen(x, y);
   lastSpawnAt = holdStartAt;
   requestAnimationFrame(tickHold);
+});
+
+// Right-click anywhere on the canvas: if on a macro, open the context menu.
+// Otherwise suppress the default browser context menu so right-click on empty
+// space doesn't surface the OS menu over the simulation.
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  if (!inspectorAllowed()) return;
+  const { x, y } = eventToScreen(e);
+  const m = pickMacroAtScreen(x, y, 16);
+  if (!m) return;
+  ui.showMacroContextMenu(macroMenuOpts(m, e.clientX, e.clientY));
 });
 
 canvas.addEventListener('pointermove', (e) => {
@@ -295,6 +351,7 @@ canvas.addEventListener('pointermove', (e) => {
       // Treat as a paint gesture from this point forward. Don't retro-spawn.
       pendingPinId = null;
       pendingPinStart = null;
+      clearLongPress();
       holding = true;
       holdStartAt = performance.now();
       lastSpawnAt = 0;
@@ -313,6 +370,7 @@ function endHold(e) {
     pendingPinId = null;
     pendingPinStart = null;
   }
+  clearLongPress();
   holding = false;
   if (e && e.pointerId !== undefined && canvas.hasPointerCapture?.(e.pointerId)) {
     canvas.releasePointerCapture(e.pointerId);
