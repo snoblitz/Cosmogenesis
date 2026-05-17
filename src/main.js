@@ -10,6 +10,7 @@ import { loadGame, saveGame, clearSave, setFreshUntil } from './save.js';
 import { ERAS, MIN_ZOOM, FIRST_LIGHT_ERA } from './eras.js';
 import { MACRO_CRADLE_THRESHOLD } from './simulation.js';
 import './mobile.js';
+import './ios-install-hint.js';
 
 const canvas = document.getElementById('universe');
 const sim    = new Simulation();
