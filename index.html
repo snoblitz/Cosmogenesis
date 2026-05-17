@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#000000" />
+  <title>Cosmogenesis</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <canvas id="universe"></canvas>
+
+  <div id="ui">
+    <div id="hud-left">
+      <div id="hud-top-left" class="panel">
+        <div class="era-line">
+          <span class="label">Era</span>
+          <span id="era-name">The Void</span>
+          <button class="info-icon" id="era-info" aria-label="About this era">i</button>
+        </div>
+        <div class="era-line lens-line">
+          <span class="label">Lens</span>
+          <span id="lens-name">Thermal</span>
+        </div>
+        <div class="stat-line">
+          <span class="label">Potential <button class="info-icon" data-info="potential" aria-label="What is Potential?">i</button></span>
+          <span id="stat-potential">0</span>
+        </div>
+        <div class="stat-line">
+          <span class="label">Matter <button class="info-icon" data-info="matter" aria-label="What is Matter?">i</button></span>
+          <span id="stat-matter">0</span>
+        </div>
+        <div class="stat-line stat-conditional stat-structures-row">
+          <span class="label">Structures <button class="info-icon" data-info="structures" aria-label="What are Structures?">i</button></span>
+          <span id="stat-structures">0</span>
+        </div>
+        <div class="stat-line stat-conditional stat-cradles-row">
+          <span class="label">Cradles <button class="info-icon" data-info="cradles" aria-label="What are Cradles?">i</button></span>
+          <span id="stat-cradles">0</span>
+        </div>
+        <div class="stat-line stat-conditional stat-filaments-row">
+          <span class="label">Filaments <button class="info-icon" data-info="filaments" aria-label="What are Filaments?">i</button></span>
+          <span id="stat-filaments">0</span>
+        </div>
+      </div>
+
+      <div id="hud-unlocks" class="panel">
+        <div class="unlocks-title">Unlocks</div>
+        <ul id="unlocks-list"></ul>
+      </div>
+
+      <div id="hud-instruments" class="panel">
+        <div class="unlocks-title">Instruments</div>
+        <ul id="instruments-list"></ul>
+      </div>
+    </div>
+
+    <div id="hud-top-right" class="panel">
+      <div class="laws-title">Discovered Laws</div>
+      <ul id="laws-list"></ul>
+      <div id="laws-empty" class="laws-empty">No laws yet observed.</div>
+    </div>
+
+    <div id="hud-bottom">
+      <span id="hint">Tap the void to add potential…</span>
+    </div>
+
+    <div id="whisper"></div>
+
+    <button id="settings-btn" title="Global settings">⚙</button>
+    <button id="reset-btn" title="Begin a new universe">↻</button>
+
+    <div id="settings-panel" class="panel">
+      <div class="unlocks-title">Settings</div>
+      <div id="settings-content"></div>
+    </div>
+
+    <div id="info-tooltip" role="dialog" aria-live="polite"></div>
+
+    <div id="discovery-banner"></div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
