@@ -422,6 +422,14 @@ body {
 .era-line.lens-line.revealed.inactive {
   opacity: 0.35;
 }
+.era-line.year-line {
+  margin-bottom: 10px;
+}
+.era-line.year-line #year-count {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.92);
+}
 .era-line .label {
   display: block;
   font-size: 10px;

@@ -184,6 +184,7 @@ const UNLOCK_DEFINITIONS = [];
 export class UI {
   constructor() {
     this.elEra        = document.getElementById('era-name');
+    this.elYear       = document.getElementById('year-count');
     this.elEraInfo    = document.getElementById('era-info');
     this.elLens       = document.getElementById('lens-name');
     this.elLensLine   = document.querySelector('.lens-line');
@@ -1058,6 +1059,10 @@ export class UI {
 
     const era = state.currentEra();
     if (this.elEra.textContent !== era.name) this.elEra.textContent = era.name;
+    if (this.elYear) {
+      const yearStr = fmt(state.cosmicYear || 0);
+      if (this.elYear.textContent !== yearStr) this.elYear.textContent = yearStr;
+    }
     if (this.elHint.textContent !== era.hint) this.elHint.textContent = era.hint;
 
     const lens = state.lensLabel();

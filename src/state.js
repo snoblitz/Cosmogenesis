@@ -5,7 +5,7 @@
 
 import { ERAS, evaluateEra, FIRST_LIGHT_ERA } from './eras.js';
 import { findReadyWhisper } from './whispers.js';
-import { MACRO_CRADLE_THRESHOLD } from './simulation.js';
+import { MACRO_CRADLE_THRESHOLD, YEARS_PER_SECOND } from './simulation.js';
 
 const WHISPER_COOLDOWN_MS = 35000;
 
@@ -16,6 +16,7 @@ export class GameState {
     this.structures = 0;
     this.cradles = 0;
     this.filaments = 0;
+    this.cosmicYear = 0;
     this.eraIndex = 0;
     this.laws = [];
     this.pendingDiscoveries = [];
@@ -121,6 +122,7 @@ export class GameState {
     this.structures = sim.macros.length;
     this.cradles = cradles;
     this.maxParticleMass = maxMass;
+    this.cosmicYear = Math.floor((sim.totalElapsedS || 0) * YEARS_PER_SECOND);
     // Pull filament count straight from renderer's live map. Cheap, no extra
     // state to sync, always in sync with what's actually drawn.
     this.filaments = (renderer && renderer._filaments) ? renderer._filaments.size : 0;
