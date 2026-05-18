@@ -240,10 +240,10 @@ const INSTRUMENT_DEFINITIONS = [
     earned: (state) => state.eraIndex >= FIRST_LIGHT_ERA,
     toggleable: true,
     settings: [
-      { key: 'visibleExposure', label: 'Exposure', min: 0.3, max: 2.0, step: 0.05, default: 1.0,
+      { key: 'visibleExposure', label: 'Exposure', min: 0.3, max: 2.0, step: 0.05, default: 0.3,
         format: (v) => `${Math.round(v * 100)}%`,
         tooltip: 'Brightness of the visible-spectrum view, like a camera exposure setting. Lower it for a cleaner contrast against the void; raise it to coax faint emission out of cooler bodies.' },
-      { key: 'visibleBloom', label: 'Star Bloom', min: 0, max: 2.0, step: 0.05, default: 1.0,
+      { key: 'visibleBloom', label: 'Star Bloom', min: 0, max: 2.0, step: 0.05, default: 0.4,
         format: (v) => `${Math.round(v * 100)}%`,
         tooltip: 'How much halo glow surrounds bright bodies. Zero gives the sharp pinpoint look of a perfect lens; higher values feel like atmospheric scatter or a long-exposure photo.' },
       { key: 'visibleDiffractionSpikes', label: 'Diffraction Spikes', type: 'toggle', default: true,

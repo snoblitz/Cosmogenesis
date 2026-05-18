@@ -71,8 +71,8 @@ export class GameState {
       thermalDimAmount:         1.0,     // multiplier on dimming overlay (0..1.5)
       thermalScanlineIntensity: 1.0,     // multiplier on scanline grain (0..2)
       thermalShowScale:         true,    // show cold-to-warm temperature legend
-      visibleExposure:          1.0,     // visible-spectrum brightness multiplier (0.3..2)
-      visibleBloom:             1.0,     // halo/aura radius multiplier on bright bodies (0..2)
+      visibleExposure:          0.3,     // visible-spectrum brightness multiplier (0.3..2)
+      visibleBloom:             0.4,     // halo/aura radius multiplier on bright bodies (0..2)
       visibleDiffractionSpikes: true,    // 4-point cross spikes on stars (Hubble-style)
       cursorStyle:              'crosshair', // pointer style over the canvas
       touchOffsetPx:            0,       // vertical offset (CSS px) lifting touch input above the fingertip
