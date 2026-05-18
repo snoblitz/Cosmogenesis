@@ -56,6 +56,17 @@ export class GameState {
     this.visibleLensActive = false;
     this.thermalScanDone = false;
     this.visibleScanDone = false;
+    // Idempotent flag for the one-time cosmic expansion that fires at First
+    // Light (world grows ~50x, outer cosmos seeded with diffuse matter,
+    // Potential inflated to match). Persisted so saves never re-expand on
+    // reload, and so legacy post-First-Light saves can trigger the
+    // expansion on first load if they were saved before this feature.
+    this.firstLightExpansionDone = false;
+    // Wall-clock timestamp until which Smart Tracking auto-pan is suppressed.
+    // Set during dramatic cinematics (First Light) so the auto-fit logic
+    // doesn't fight the era-zoom + camera reframe. Not persisted (purely
+    // transient UX).
+    this.smartTrackingSuppressUntil = 0;
 
     // Per-instrument settings, all user-adjustable from the HUD and
     // persisted across sessions. Defaults are the values the lens shipped
@@ -199,6 +210,36 @@ export class GameState {
       if (this.requestSave) this.requestSave();
     }
 
+    // Cosmic expansion: idempotent migration that runs once when the player
+    // is in First Light era but hasn't yet had the universe expanded. This
+    // covers both the natural era 4->5 transition AND legacy saves written
+    // before this feature shipped. Either way it fires exactly once and
+    // sets the flag.
+    if (!this.firstLightExpansionDone && this.eraIndex >= FIRST_LIGHT_ERA && sim && typeof sim.expandWorld === 'function') {
+      const EXPANSION_FACTOR = 7;       // ~sqrt(50): 50x area, 7x per dim
+      const COSMIC_SEED_COUNT = 800;    // sparse cosmic dust in the outer ring
+      const expansion = sim.expandWorld(EXPANSION_FACTOR);
+      const seededMass = sim.seedCosmicMatter(COSMIC_SEED_COUNT, expansion.oldRect);
+      // Bump caps so the bigger universe has headroom for player creation
+      // + cosmic seed + future macro formation.
+      sim.particleCap = 5000;
+      sim.macroCap = 100;
+      // Economy inflation (Option A): credit Potential by the seeded mass
+      // so the new Matter doesn't suddenly exceed Potential. Each seeded
+      // particle is treated as a cosmic tap the universe made.
+      this.potential += Math.round(seededMass);
+      // Camera handoff: re-center on new world center, clear any manual
+      // override so the era-5 zoom target + cinematic framing can take over.
+      if (renderer) {
+        renderer.setCameraCenter?.(sim.bounds.w / 2, sim.bounds.h / 2);
+        if (renderer.cameraOverride !== undefined) renderer.cameraOverride = false;
+      }
+      // Suppress Smart Tracking briefly so it doesn't fight the cinematic.
+      this.smartTrackingSuppressUntil = Date.now() + 10000;
+      this.firstLightExpansionDone = true;
+      if (this.requestSave) this.requestSave();
+    }
+
     // Whisper evaluation
     const now = Date.now();
     if (!this.pendingWhisper && now >= this._whisperCooldownUntil) {
@@ -224,6 +265,7 @@ export class GameState {
       visibleLensActive:  this.visibleLensActive,
       thermalScanDone:    this.thermalScanDone,
       visibleScanDone:    this.visibleScanDone,
+      firstLightExpansionDone: this.firstLightExpansionDone,
       settings:           { ...this.settings }
     };
   }
@@ -241,6 +283,7 @@ export class GameState {
     this.visibleLensActive  = !!d.visibleLensActive;
     this.thermalScanDone    = !!d.thermalScanDone;
     this.visibleScanDone    = !!d.visibleScanDone;
+    this.firstLightExpansionDone = !!d.firstLightExpansionDone;
 
     // Migration: saves written before the visibleLensActive field existed
     // had `lensVisuallyActive` doing double duty post-First-Light. If we're

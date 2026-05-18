@@ -59,10 +59,85 @@ export class Simulation {
     this.totalSpawned = 0;
     this.totalElapsedS = 0;  // simulation timeline in seconds (used for auto-naming)
     this.onEmitterEmit = null;
+    // Runtime caps (overridable per-era). Default to the historical micro-era
+    // values; First Light bumps them to make room for the expanded cosmos.
+    this.particleCap = MAX_PARTICLES;
+    this.macroCap    = MAX_MACROS;
+    // Multiplier on the resize-time world size. 1 = default micro-era world
+    // (viewport / MIN_ZOOM in each dim). First Light multiplies this by ~7
+    // (sqrt 50) to make a ~50x area cosmos. Persisted so reloads + window
+    // resizes preserve the expanded scale.
+    this.worldScale = 1;
   }
 
   setBounds(w, h) { this.bounds.w = w; this.bounds.h = h; }
   setEraLevel(n)  { this.eraLevel = n; }
+
+  // Cosmic expansion event (First Light, etc.). Multiplies worldScale by
+  // `factor`, shifts every existing body (particles, macros, emitters) by
+  // (dx, dy) so they remain at the center of the now-larger world, and
+  // returns the shift so callers can update the camera + lookups.
+  //
+  // The caller is responsible for kicking the resize/setBounds path because
+  // those are driven from main.js (canvas pixel size + MIN_ZOOM). This
+  // method updates bounds.w/h directly so the new size is in effect
+  // immediately, even before the next window resize.
+  expandWorld(factor) {
+    if (!Number.isFinite(factor) || factor <= 1) return { dx: 0, dy: 0, oldRect: null };
+    const oldW = this.bounds.w, oldH = this.bounds.h;
+    const newW = oldW * factor, newH = oldH * factor;
+    const dx = (newW - oldW) / 2;
+    const dy = (newH - oldH) / 2;
+    for (const p of this.particles) { p.x += dx; p.y += dy; }
+    for (const m of this.macros)    { m.x += dx; m.y += dy; }
+    for (const e of this.emitters)  { e.x += dx; e.y += dy; }
+    this.bounds.w = newW;
+    this.bounds.h = newH;
+    this.worldScale *= factor;
+    return { dx, dy, oldRect: { x: dx, y: dy, w: oldW, h: oldH } };
+  }
+
+  // Sparsely seed the OUTER RING of the now-expanded world with diffuse
+  // cosmic matter. Particles are mass 1-2, slow drift velocities, slightly
+  // warmer hues than fresh player spawns (suggests these have been drifting
+  // for some time). Rejection sampling avoids the old central rectangle.
+  // Bypasses the particle cap because the player has not done the spawning;
+  // the cap is for hand-spawned + emitter-spawned bodies.
+  // Returns total mass added.
+  seedCosmicMatter(count, oldRect) {
+    if (!oldRect) return 0;
+    let totalMass = 0;
+    let placed = 0;
+    let tries = 0;
+    const maxTries = count * 6;
+    while (placed < count && tries < maxTries) {
+      tries++;
+      const x = Math.random() * this.bounds.w;
+      const y = Math.random() * this.bounds.h;
+      if (x >= oldRect.x && x <= oldRect.x + oldRect.w &&
+          y >= oldRect.y && y <= oldRect.y + oldRect.h) continue;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.3 + Math.random() * 1.5;  // slow cosmic drift, vs 1.5-7.5 for player spawns
+      const mass = 1 + Math.random() * 1.2;     // mass 1-2.2 with slight variation
+      this.particles.push({
+        id: this.nextId++,
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        mass,
+        r: 2.2,
+        // Slightly warmer hue: 180-310 instead of player-spawn 195-290. The
+        // long tail toward warm reads as "this has been here a while".
+        hue: 180 + Math.random() * 130,
+        age: 0,
+        alive: true
+      });
+      totalMass += mass;
+      placed++;
+    }
+    this.totalSpawned += placed;
+    return totalMass;
+  }
 
   // Hit-test a world point against macros. `padWorld` is added to every macro's
   // radius so callers can make tap targets larger than the visual circle.
@@ -141,7 +216,7 @@ export class Simulation {
   }
 
   spawnParticleWithVelocity(x, y, vx, vy, opts) {
-    if (this.particles.length >= MAX_PARTICLES) {
+    if (this.particles.length >= this.particleCap) {
       // Drop the oldest non-massive particle to make room
       let oldestIdx = -1;
       let oldestAge = -1;
@@ -263,7 +338,7 @@ export class Simulation {
           this.particles.splice(i, 1);
           continue;
         }
-        if (this.macros.length < MAX_MACROS) {
+        if (this.macros.length < this.macroCap) {
           this.macros.push(this._promoteToMacro(p));
           this.particles.splice(i, 1);
         }
@@ -520,7 +595,10 @@ export class Simulation {
       eraLevel: this.eraLevel,
       totalMerges: this.totalMerges,
       totalSpawned: this.totalSpawned,
-      totalElapsedS: this.totalElapsedS
+      totalElapsedS: this.totalElapsedS,
+      particleCap: this.particleCap,
+      macroCap: this.macroCap,
+      worldScale: this.worldScale
     };
   }
 
@@ -535,6 +613,9 @@ export class Simulation {
     this.totalMerges = d.totalMerges || 0;
     this.totalSpawned = d.totalSpawned || 0;
     this.totalElapsedS = typeof d.totalElapsedS === 'number' ? d.totalElapsedS : 0;
+    this.particleCap = typeof d.particleCap === 'number' ? d.particleCap : MAX_PARTICLES;
+    this.macroCap    = typeof d.macroCap    === 'number' ? d.macroCap    : MAX_MACROS;
+    this.worldScale  = typeof d.worldScale  === 'number' ? d.worldScale  : 1;
 
     // Backfill bornAtS + kind + name + history for legacy macros saved before
     // their respective features.

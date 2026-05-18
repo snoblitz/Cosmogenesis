@@ -117,8 +117,9 @@ function computeThermalTarget() {
 }
 
 // --- Canvas sizing & world bounds ---
-// World is MIN_ZOOM times bigger than the viewport in each dimension, so even
-// at the most pulled-back zoom level the world still fills the screen.
+// World is (MIN_ZOOM × sim.worldScale) times bigger than the viewport in
+// each dimension. sim.worldScale starts at 1 (default micro-era cosmos)
+// and gets multiplied at signature events like First Light (~7x).
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width  = Math.floor(window.innerWidth  * dpr);
@@ -127,8 +128,9 @@ function resize() {
   canvas.style.height = window.innerHeight + 'px';
   renderer.setDPR(dpr);
 
-  const worldW = canvas.width  / MIN_ZOOM;
-  const worldH = canvas.height / MIN_ZOOM;
+  const scale = (sim.worldScale && sim.worldScale > 0) ? sim.worldScale : 1;
+  const worldW = (canvas.width  / MIN_ZOOM) * scale;
+  const worldH = (canvas.height / MIN_ZOOM) * scale;
   sim.setBounds(worldW, worldH);
   // Don't snap the camera back to center while the player has it under
   // manual control -- that would jerk their view on every resize.
@@ -240,8 +242,20 @@ function eventToScreen(e) {
   };
 }
 
-function spawnAtScreen(sx, sy) {
+// Convert screen coords → world coords, clamped to the current sim bounds.
+// Used by particle spawning AND emitter placement so the player can't
+// create matter outside the playable area (which would otherwise pile up
+// at the bounce wall, or be silently lost).
+function screenToClampedWorld(sx, sy) {
   const w = renderer.screenToWorld(sx, sy);
+  return {
+    x: Math.max(0, Math.min(sim.bounds.w, w.x)),
+    y: Math.max(0, Math.min(sim.bounds.h, w.y))
+  };
+}
+
+function spawnAtScreen(sx, sy) {
+  const w = screenToClampedWorld(sx, sy);
   sim.spawnParticle(w.x, w.y);
   state.potential += 1;
   state.markInteraction(Date.now());
@@ -614,7 +628,7 @@ canvas.addEventListener('pointerdown', (e) => {
       refreshTools();
       return;
     }
-    const w = renderer.screenToWorld(x, y);
+    const w = screenToClampedWorld(x, y);
     const emitter = sim.deployEmitterAt(w.x, w.y);
     if (emitter) {
       state.potential -= cost;
@@ -906,6 +920,10 @@ const SMART_TRACK_FIT_BUFFER = 1.08; // 8% breathing room on every side
 function updateSmartTracking(dt) {
   if (renderer.cameraOverride) return;
   if (!state.settings || !state.settings.smartTracking) return;
+  // Suppress during cinematic moments (e.g. just after First Light expansion
+  // and reframe) so smart-track auto-zoom doesn't fight the dramatic camera
+  // pull-back. State sets smartTrackingSuppressUntil to a future timestamp.
+  if (state.smartTrackingSuppressUntil && Date.now() < state.smartTrackingSuppressUntil) return;
   const macros = sim.macros;
   if (!macros || macros.length === 0) return;
 
