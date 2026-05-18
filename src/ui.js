@@ -605,7 +605,7 @@ export class UI {
   }
 
   _buildSettingControl(setting, state) {
-    const wrap = document.createElement('label');
+    const wrap = document.createElement('div');
     wrap.className = 'setting-row';
 
     const head = document.createElement('span');
@@ -751,7 +751,13 @@ export class UI {
 
     const stop = (e) => e.stopPropagation();
     switchEl.addEventListener('pointerdown', stop);
-    switchEl.addEventListener('click', stop);
+    switchEl.addEventListener('click', (e) => {
+      // The row is no longer a <label>, so there's no implicit checkbox
+      // toggling. Handle the click explicitly on the visible switch.
+      e.stopPropagation();
+      apply(!input.checked);
+      if (state.requestSave) state.requestSave();
+    });
     input.addEventListener('change', () => {
       apply(input.checked);
       if (state.requestSave) state.requestSave();
