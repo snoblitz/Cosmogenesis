@@ -210,7 +210,12 @@ const INSTRUMENT_DEFINITIONS = [
     id: 'thermal-lens',
     label: 'Thermal Lens',
     icon: 'eye',
-    earned: (state) => state.seenWhispers && state.seenWhispers.has('opening-thermal'),
+    // Available from the opening-thermal whisper through First Light. Once
+    // the universe ignites into visible spectrum, the same physical lens is
+    // relabelled as the Visible Lens (which shares the lensVisuallyActive
+    // flag), so the Thermal entry is retired to avoid two entries fighting
+    // over the same toggle.
+    earned: (state) => state.seenWhispers && state.seenWhispers.has('opening-thermal') && state.eraIndex < FIRST_LIGHT_ERA,
     toggleable: true,
     settings: [
       { key: 'thermalDimAmount',         label: 'Dimming',           min: 0, max: 1.5, step: 0.05, default: 1.0,
@@ -603,13 +608,24 @@ export class UI {
   }
 
   // Sync items from a definition list into a panel. Appends new entries,
-  // reveals the panel on first earned item, refreshes enabled/disabled state.
+  // removes entries that have become unearned (e.g. Thermal Lens after First
+  // Light), reveals the panel on first earned item, refreshes enabled state.
   _syncListPanel(state, definitions, container, panel, nodeMap) {
     let anyEarned = false;
     for (const def of definitions) {
-      if (!def.earned(state)) continue;
-      anyEarned = true;
+      const isEarned = def.earned(state);
       let li = nodeMap.get(def.id);
+      if (!isEarned) {
+        // Item is no longer earned (e.g. an instrument that's been retired
+        // by a later-era replacement). Remove its DOM node so it stops
+        // claiming a slot in the panel.
+        if (li) {
+          li.remove();
+          nodeMap.delete(def.id);
+        }
+        continue;
+      }
+      anyEarned = true;
       if (!li) {
         li = this._buildListItem(def, state);
         container.appendChild(li);
@@ -1762,14 +1778,25 @@ export class UI {
     // Build global settings panel content on first render (state is now loaded)
     if (!this._globalSettingsBuilt) this._populateGlobalSettings(state);
 
-    // Discovery banner (one at a time)
+    // Discovery banner (one at a time). For most eras, fire as soon as the
+    // era advances. First Light is the exception: the ignition cinematic
+    // (visible-spectrum reveal scan + flash + expanding rings) needs ~3s to
+    // fully read on its own. The banner appears as a quiet capstone after
+    // that, so the player isn't trying to read text during the most
+    // dramatic visual moment in the game.
     if (!this._bannerLock && state.pendingDiscoveries.length) {
       const era = state.pendingDiscoveries.shift();
-      // If a whisper is queued or showing, give the banner extra dwell so
-      // the player isn't trying to read two things at once. Era transitions
-      // are major moments and deserve a real beat.
       const concurrent = !!state.pendingWhisper || this._whisperLock;
-      this._showBanner(era, concurrent);
+      const delayMs = (era && era.name === 'First Light') ? 3200 : 0;
+      if (delayMs > 0) {
+        this._bannerLock = true; // claim the slot now so we don't double-pop
+        setTimeout(() => {
+          this._bannerLock = false; // _showBanner will re-claim
+          this._showBanner(era, concurrent);
+        }, delayMs);
+      } else {
+        this._showBanner(era, concurrent);
+      }
     }
 
     // Whisper (one at a time, distinct from banners)

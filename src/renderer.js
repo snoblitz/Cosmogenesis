@@ -13,6 +13,9 @@
 // After the scan completes the effect covers the whole canvas at the
 // current `thermalAlpha`, which can then be faded out at First Light.
 
+import { isVisibleSpectrum } from './eras.js';
+import { visibleHueFor } from './simulation.js';
+
 const PARTICLE_HUE_BUCKETS = 24;
 const PARTICLE_SPRITE_PX   = 128;
 const MACRO_HUE_BUCKETS    = 24;
@@ -378,7 +381,8 @@ export class Renderer {
     // bright macro core, so the macro still reads as the focal point.
     for (const m of sim.macros)    this._drawMacroAtmosphere(m, t, sim.totalElapsedS);
     this._drawEmitters(sim, t, z, ui);
-    for (const m of sim.macros)    this._drawMacro(m);
+    const visibleMode = isVisibleSpectrum(state);
+    for (const m of sim.macros)    this._drawMacro(m, visibleMode);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
 
@@ -538,14 +542,26 @@ export class Renderer {
     ctx.drawImage(sprite, p.x - glowR, p.y - glowR, glowR * 2, glowR * 2);
   }
 
-  _drawMacro(m) {
+  _drawMacro(m, visibleMode = false) {
     const ctx = this.ctx;
     const pulse = 1 + Math.sin(m.pulse * 1.6) * 0.08;
     const r = m.r * this.dpr * pulse;
     const glowR = r * 5;
-    const sprite = (m.kind === 'star')
-      ? this.starMacroSprite
-      : this.macroSprites[this._hueIndex(m.hue, MACRO_HUE_BUCKETS)];
+    // Color palette policy:
+    //  - Stars always use their dedicated white-gold sprite. They are stars
+    //    in any lens; the visible spectrum doesn't change what a star is.
+    //  - Other macros (Structures, Cradles) use the thermal palette (m.hue)
+    //    when the universe is in heat-radiation mode, OR a blackbody-derived
+    //    hue (mass → temperature) when the player is observing in visible
+    //    spectrum. Heavy cradles are gold-warm thermally but yellow-white
+    //    in visible — that's the dramatic reveal at First Light.
+    let sprite;
+    if (m.kind === 'star') {
+      sprite = this.starMacroSprite;
+    } else {
+      const hue = visibleMode ? visibleHueFor(m.mass) : m.hue;
+      sprite = this.macroSprites[this._hueIndex(hue, MACRO_HUE_BUCKETS)];
+    }
     ctx.globalAlpha = 1;
     ctx.drawImage(sprite, m.x - glowR, m.y - glowR, glowR * 2, glowR * 2);
   }
@@ -654,13 +670,16 @@ export class Renderer {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
 
-    const flash = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, baseR * 3);
-    flash.addColorStop(0.0, `hsla(50, 100%, 98%, ${0.85 * fade})`);
-    flash.addColorStop(0.32, `hsla(46, 96%, 90%, ${0.45 * fade})`);
+    // Central flash. Tuned for "dramatic but not retina-burning" — the
+    // visible scan reveal carries most of the emotional weight, this burst
+    // is the punctuation. Peak alphas were 0.85/0.45/0.9 in earlier builds.
+    const flash = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, baseR * 2.6);
+    flash.addColorStop(0.0, `hsla(50, 100%, 98%, ${0.55 * fade})`);
+    flash.addColorStop(0.32, `hsla(46, 96%, 90%, ${0.28 * fade})`);
     flash.addColorStop(1.0, 'hsla(40, 92%, 76%, 0)');
     ctx.fillStyle = flash;
     ctx.beginPath();
-    ctx.arc(m.x, m.y, baseR * 3, 0, Math.PI * 2);
+    ctx.arc(m.x, m.y, baseR * 2.6, 0, Math.PI * 2);
     ctx.fill();
 
     for (let i = 0; i < 3; i++) {
@@ -669,7 +688,7 @@ export class Renderer {
       if (ringR <= 0.01) continue;
       const ringFade = Math.max(0, fade * (1 - i * 0.14));
       ctx.lineWidth = (3 - 2.5 * u) * this.dpr;
-      ctx.strokeStyle = `hsla(${48 - i * 3}, 96%, 88%, ${0.9 * ringFade})`;
+      ctx.strokeStyle = `hsla(${48 - i * 3}, 96%, 88%, ${0.62 * ringFade})`;
       ctx.beginPath();
       ctx.arc(m.x, m.y, ringR, 0, Math.PI * 2);
       ctx.stroke();

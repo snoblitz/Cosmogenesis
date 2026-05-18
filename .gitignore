@@ -23,3 +23,8 @@ npm-debug.log*
 tests/
 package.json
 package-lock.json
+
+# Local play-testing artifacts (Playwright screenshots + scripts).
+# Not source; useful during a dev session but not part of the project.
+playtest/
+playtest_*.py

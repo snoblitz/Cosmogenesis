@@ -4,7 +4,7 @@
 // universe itself.
 
 import { ERAS, evaluateEra, FIRST_LIGHT_ERA } from './eras.js';
-import { findReadyWhisper } from './whispers.js';
+import { findReadyWhisper, WHISPERS } from './whispers.js';
 import { YEARS_PER_SECOND } from './simulation.js';
 
 export const EMITTER_COST_BASE = 50;
@@ -77,6 +77,10 @@ export class GameState {
   canToggleLens(id) {
     if (id === 'radio-lens')   return this.seenWhispers.has('opening-radio');
     if (id === 'thermal-lens') return this.seenWhispers.has('opening-thermal');
+    // Visible Lens shares the underlying lensVisuallyActive flag with Thermal,
+    // but only becomes the player-facing toggle once First Light has occurred.
+    // Before that, "Thermal Lens" is the label; after, "Visible Lens" is.
+    if (id === 'visible-lens') return this.eraIndex >= FIRST_LIGHT_ERA;
     return false;
   }
 
@@ -84,6 +88,7 @@ export class GameState {
   isLensEnabled(id) {
     if (id === 'radio-lens')   return !!this.radioLensActive;
     if (id === 'thermal-lens') return !!this.lensVisuallyActive;
+    if (id === 'visible-lens') return !!this.lensVisuallyActive;
     return false;
   }
 
@@ -92,6 +97,7 @@ export class GameState {
     if (!this.canToggleLens(id)) return false;
     if (id === 'radio-lens')   this.radioLensActive    = !this.radioLensActive;
     if (id === 'thermal-lens') this.lensVisuallyActive = !this.lensVisuallyActive;
+    if (id === 'visible-lens') this.lensVisuallyActive = !this.lensVisuallyActive;
     if (this.requestSave) this.requestSave();
     return this.isLensEnabled(id);
   }
@@ -139,6 +145,7 @@ export class GameState {
     // Era advancement (one at a time so each discovery banner is seen)
     const next = evaluateEra(this, sim);
     if (next !== null && next > this.eraIndex) {
+      const prevEra = this.eraIndex;
       this.eraIndex = this.eraIndex + 1;
       this.eraEnteredAt = Date.now();
       const era = ERAS[this.eraIndex];
@@ -147,6 +154,19 @@ export class GameState {
         this.pendingDiscoveries.push(era);
       }
       sim.setEraLevel(this.eraIndex);
+
+      // Signature-moment whispers bypass the normal cooldown so they fire
+      // synchronous with their dramatic visual event, not 35s later. Right
+      // now this is only First Light, but the pattern can extend.
+      if (prevEra < FIRST_LIGHT_ERA && this.eraIndex >= FIRST_LIGHT_ERA) {
+        const w = WHISPERS.find(x => x.id === 'first-light');
+        if (w && !this.seenWhispers.has(w.id)) {
+          this.pendingWhisper = w;
+          this.seenWhispers.add(w.id);
+          this._whisperCooldownUntil = Date.now() + WHISPER_COOLDOWN_MS;
+        }
+      }
+
       if (this.requestSave) this.requestSave();
     }
 

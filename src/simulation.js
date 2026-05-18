@@ -17,6 +17,28 @@ export const EMITTER_ERA_GATE = 3;        // earliest era index that allows depl
 // in the player-facing universe. Internal dt math stays in real seconds; this
 // only affects what we *show* the player (auto-name suffix, ages, etc.).
 export const YEARS_PER_SECOND = 10;
+
+// Visible-spectrum hue for a body of the given mass. Models a coarse
+// blackbody curve: cold low-mass bodies glow deep red, warming through
+// orange and yellow as mass grows, then crossing into the dramatic blue-white
+// range when the body has gone through stellar ignition (mass ≥ 1500). This
+// is the COMPLEMENT to the thermal palette (m.hue), which evolves via the
+// "accumulated heat" abstraction (cool blue → gold via merges). The visible
+// palette is *physical*: hotter bodies are bluer, matching real astronomy.
+// Renderer picks which palette to use based on the active lens.
+export function visibleHueFor(mass) {
+  const m = Math.max(0, mass || 0);
+  // Pre-ignition gradient: red (cold rocky) → orange → yellow → yellow-white
+  if (m < 50)   return lerp(8,  22, m / 50);            // deep red → orange-red
+  if (m < 200)  return lerp(22, 38, (m - 50) / 150);    // orange-red → orange
+  if (m < 700)  return lerp(38, 52, (m - 200) / 500);   // orange → yellow
+  if (m < 1500) return lerp(52, 58, (m - 700) / 800);   // yellow → yellow-white
+  // Post-ignition: smooth from white-yellow toward blue-white over ~3000 mass
+  // so freshly ignited stars do not snap straight to deep blue.
+  if (m < 3000) return lerp(58, 200, (m - 1500) / 1500);
+  return 220;                                            // hot blue-white
+}
+function lerp(a, b, t) { return a + (b - a) * Math.max(0, Math.min(1, t)); }
 // Cap on per-macro history entries kept in memory + localStorage. We always
 // retain born, cradle, and ignition milestones; oldest absorbs are trimmed first.
 export const MAX_MACRO_HISTORY = 50;
