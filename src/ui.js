@@ -109,6 +109,14 @@ const GLOBAL_SETTINGS = [
     min: 0, max: 80, step: 4, default: 0,
     format: (v) => v === 0 ? 'Off' : `${Math.round(v)}px`,
     tooltip: 'For touch input only. Lifts the effective tap point above your fingertip so the spawn isn\'t hidden under your finger. Mouse and stylus are never offset. Try 32px on phones if the dot lands under your touch.'
+  },
+  {
+    key: 'showTouchPointer',
+    label: 'Show Touch Pointer',
+    type: 'toggle',
+    default: false,
+    tooltip: 'For touch input only. Renders your chosen cursor at the tap location so you can see exactly where the spawn lands - especially useful with Touch Offset enabled. Mouse and stylus are unaffected.',
+    onChange: (_v, ui) => ui._refreshTouchPointerStyle && ui._refreshTouchPointerStyle()
   }
 ];
 
@@ -121,6 +129,20 @@ const CURSOR_VALUES = {
   dot:       "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><circle cx='8' cy='8' r='4' fill='%23c7b6ff' fill-opacity='0.4'/><circle cx='8' cy='8' r='2' fill='%23ffffff' fill-opacity='0.95'/></svg>\") 8 8, crosshair",
   plus:      "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><line x1='8' y1='2' x2='8' y2='14' stroke='%23ffffff' stroke-opacity='0.9' stroke-width='1.2'/><line x1='2' y1='8' x2='14' y2='8' stroke='%23ffffff' stroke-opacity='0.9' stroke-width='1.2'/></svg>\") 8 8, crosshair",
   none:      'none'
+};
+
+// Parallel SVG-only variants for the touch pointer overlay. Same glyphs as
+// the cursors above but rendered as a centered floating element rather than
+// a cursor hotspot — so styles like 'default' (system arrow) and 'crosshair'
+// (browser default) need explicit SVG fallbacks. Each value is { svg, size }
+// where size is the side length in CSS px.
+const TOUCH_POINTER_GLYPHS = {
+  default:   { svg: "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'><path d='M3 2 L3 14 L7 11 L10 17 L12 16 L9 10 L14 10 Z' fill='%23ffffff' fill-opacity='0.9' stroke='%23000000' stroke-opacity='0.4' stroke-width='0.6'/></svg>", size: 20, hotspot: { x: 3, y: 2 } },
+  crosshair: { svg: "<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'><line x1='11' y1='1' x2='11' y2='8' stroke='%23ffffff' stroke-opacity='0.9' stroke-width='1.2'/><line x1='11' y1='14' x2='11' y2='21' stroke='%23ffffff' stroke-opacity='0.9' stroke-width='1.2'/><line x1='1' y1='11' x2='8' y2='11' stroke='%23ffffff' stroke-opacity='0.9' stroke-width='1.2'/><line x1='14' y1='11' x2='21' y2='11' stroke='%23ffffff' stroke-opacity='0.9' stroke-width='1.2'/></svg>", size: 22, hotspot: { x: 11, y: 11 } },
+  reticle:   { svg: "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><circle cx='12' cy='12' r='8' fill='none' stroke='%23ffffff' stroke-opacity='0.75' stroke-width='1'/><line x1='12' y1='1' x2='12' y2='8' stroke='%23ffffff' stroke-opacity='0.75' stroke-width='1'/><line x1='12' y1='16' x2='12' y2='23' stroke='%23ffffff' stroke-opacity='0.75' stroke-width='1'/><line x1='1' y1='12' x2='8' y2='12' stroke='%23ffffff' stroke-opacity='0.75' stroke-width='1'/><line x1='16' y1='12' x2='23' y2='12' stroke='%23ffffff' stroke-opacity='0.75' stroke-width='1'/><circle cx='12' cy='12' r='1.5' fill='%23ffffff' fill-opacity='0.85'/></svg>", size: 24, hotspot: { x: 12, y: 12 } },
+  dot:       { svg: "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><circle cx='8' cy='8' r='4' fill='%23c7b6ff' fill-opacity='0.4'/><circle cx='8' cy='8' r='2' fill='%23ffffff' fill-opacity='0.95'/></svg>", size: 16, hotspot: { x: 8, y: 8 } },
+  plus:      { svg: "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><line x1='8' y1='2' x2='8' y2='14' stroke='%23ffffff' stroke-opacity='0.9' stroke-width='1.2'/><line x1='2' y1='8' x2='14' y2='8' stroke='%23ffffff' stroke-opacity='0.9' stroke-width='1.2'/></svg>", size: 16, hotspot: { x: 8, y: 8 } },
+  none:      null
 };
 
 const INSTRUMENT_DEFINITIONS = [
@@ -291,6 +313,71 @@ export class UI {
     if (!this.elCanvas) return;
     const v = CURSOR_VALUES[styleKey] || CURSOR_VALUES.crosshair;
     this.elCanvas.style.cursor = v;
+    // If the touch pointer is visible, re-render it with the new glyph.
+    this._refreshTouchPointerStyle();
+  }
+
+  // ---- Touch pointer overlay ---------------------------------------------
+  // Optional visible cursor that follows the user's finger on touch input.
+  // Mirrors the chosen cursorStyle so the touch experience matches desktop
+  // visual language. Off by default; opt-in via the Show Touch Pointer
+  // setting. Position is in viewport (client) coords; the hotspot of each
+  // glyph is centered on the given position so it lands where the spawn does.
+  _ensureTouchPointerEl() {
+    if (this._touchPointerEl) return this._touchPointerEl;
+    const el = document.createElement('div');
+    el.id = 'touch-pointer';
+    el.setAttribute('aria-hidden', 'true');
+    el.style.cssText =
+      'position: fixed; pointer-events: none; z-index: 9000;' +
+      ' background-repeat: no-repeat; background-position: center;' +
+      ' opacity: 0; transition: opacity 140ms ease;' +
+      ' filter: drop-shadow(0 0 6px rgba(180, 150, 255, 0.45));' +
+      ' will-change: transform, opacity;';
+    document.body.appendChild(el);
+    this._touchPointerEl = el;
+    return el;
+  }
+
+  _currentTouchPointerGlyph() {
+    const style = (this._stateRef && this._stateRef.settings && this._stateRef.settings.cursorStyle) || 'crosshair';
+    return TOUCH_POINTER_GLYPHS[style] || TOUCH_POINTER_GLYPHS.crosshair;
+  }
+
+  _refreshTouchPointerStyle() {
+    if (!this._touchPointerEl) return;
+    const g = this._currentTouchPointerGlyph();
+    if (!g) {
+      this._touchPointerEl.style.backgroundImage = 'none';
+      return;
+    }
+    this._touchPointerEl.style.width  = g.size + 'px';
+    this._touchPointerEl.style.height = g.size + 'px';
+    this._touchPointerEl.style.backgroundImage = `url("data:image/svg+xml;utf8,${g.svg}")`;
+    this._touchPointerEl.style.backgroundSize  = `${g.size}px ${g.size}px`;
+    // Store hotspot for positioning math.
+    this._touchPointerHotspot = g.hotspot;
+    this._touchPointerSize    = g.size;
+  }
+
+  showTouchPointerAt(clientX, clientY) {
+    if (!this._stateRef || !this._stateRef.settings || !this._stateRef.settings.showTouchPointer) return;
+    const el = this._ensureTouchPointerEl();
+    if (!this._touchPointerHotspot) this._refreshTouchPointerStyle();
+    const g = this._currentTouchPointerGlyph();
+    if (!g) return; // 'none' style: nothing to show
+    const hs = this._touchPointerHotspot || { x: g.size / 2, y: g.size / 2 };
+    const left = Math.round(clientX - hs.x);
+    const top  = Math.round(clientY - hs.y);
+    el.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+    el.style.opacity = '1';
+    this._touchPointerVisible = true;
+  }
+
+  hideTouchPointer() {
+    if (!this._touchPointerEl) return;
+    this._touchPointerEl.style.opacity = '0';
+    this._touchPointerVisible = false;
   }
 
   _wireSettingsButton() {
@@ -890,7 +977,10 @@ export class UI {
     menu.hidden = false;
     this._contextMenuLastX = opts.screenX;
     this._contextMenuLastY = opts.screenY;
+    this._contextMenuAnchorMode = opts.anchorMode || 'corner';
     this._positionContextMenu(opts.screenX, opts.screenY);
+    // Hide the long-press indicator now that the real menu is appearing.
+    this.hideLongPressIndicator();
     requestAnimationFrame(() => {
       if (!menu.hidden) {
         menu.setAttribute('data-visible', '1');
@@ -926,8 +1016,20 @@ export class UI {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const pad = 8;
-    let x = sx;
-    let y = sy;
+    const mode = this._contextMenuAnchorMode || 'corner';
+    let x, y;
+    if (mode === 'right') {
+      // Touch-friendly: place to the right of the finger, vertically centered,
+      // so the menu isn't hidden under the user's hand. Flip to the left if
+      // there isn't room on the right.
+      const gap = 22;
+      x = sx + gap;
+      y = sy - h / 2;
+      if (x + w > vw - pad) x = sx - gap - w;
+    } else {
+      x = sx;
+      y = sy;
+    }
     if (x + w > vw - pad) x = vw - pad - w;
     if (x < pad) x = pad;
     if (y + h > vh - pad) y = vh - pad - h;
@@ -936,6 +1038,82 @@ export class UI {
     const visible = menu.getAttribute('data-visible') === '1';
     const scale = visible ? 1 : 0.96;
     menu.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0) scale(${scale})`;
+    // Remember resolved anchor (top-left of the open menu) for indicators.
+    this._contextMenuAnchorResolved = { x: Math.round(x), y: Math.round(y) };
+  }
+
+  // Predict where the right-anchor menu's top-left will appear, BEFORE the
+  // real menu is shown. Uses fallback dimensions if no measurement yet.
+  _predictContextMenuTopLeft(sx, sy) {
+    const menu = this.elContextMenu;
+    let w = 220, h = 120;
+    if (menu) {
+      const wasHidden = menu.hidden;
+      if (wasHidden) {
+        // Briefly un-hide off-screen to measure. Avoids a flash by keeping
+        // opacity 0 (data-visible not set).
+        menu.style.visibility = 'hidden';
+        menu.hidden = false;
+        const r = menu.getBoundingClientRect();
+        if (r.width > 0) w = r.width;
+        if (r.height > 0) h = r.height;
+        menu.hidden = true;
+        menu.style.visibility = '';
+      } else {
+        const r = menu.getBoundingClientRect();
+        if (r.width > 0) w = r.width;
+        if (r.height > 0) h = r.height;
+      }
+    }
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pad = 8;
+    const gap = 22;
+    let x = sx + gap;
+    let y = sy - h / 2;
+    if (x + w > vw - pad) x = sx - gap - w;
+    if (x + w > vw - pad) x = vw - pad - w;
+    if (x < pad) x = pad;
+    if (y + h > vh - pad) y = vh - pad - h;
+    if (y < pad) y = pad;
+    return { x: Math.round(x), y: Math.round(y) };
+  }
+
+  // ---- Long-press indicator ----------------------------------------------
+  // A small ring that fades in at the predicted top-left of the context menu
+  // during the latter portion of a long-press hold, telling the user their
+  // hold has been registered just before the menu reveals.
+  _ensureLongPressIndicatorEl() {
+    if (this._longPressEl) return this._longPressEl;
+    const el = document.createElement('div');
+    el.id = 'long-press-indicator';
+    el.setAttribute('aria-hidden', 'true');
+    el.style.cssText =
+      'position: fixed; pointer-events: none; z-index: 9100;' +
+      ' width: 14px; height: 14px; border-radius: 50%;' +
+      ' background: radial-gradient(circle at 35% 35%, #fff 0%, #ffd98a 40%, #b48bff 85%, transparent 100%);' +
+      ' box-shadow: 0 0 12px rgba(255, 210, 140, 0.6), 0 0 22px rgba(180, 140, 255, 0.35);' +
+      ' opacity: 0; transform: translate3d(-9999px, -9999px, 0) scale(0.3);' +
+      ' transition: opacity 180ms ease, transform 220ms cubic-bezier(0.22, 1.4, 0.36, 1);' +
+      ' will-change: transform, opacity;';
+    document.body.appendChild(el);
+    this._longPressEl = el;
+    return el;
+  }
+
+  showLongPressIndicator(clientX, clientY) {
+    const el = this._ensureLongPressIndicatorEl();
+    const anchor = this._predictContextMenuTopLeft(clientX, clientY);
+    // Position the indicator AT the predicted top-left corner of the menu.
+    // It's a 14px dot, centered on that corner.
+    el.style.transform = `translate3d(${anchor.x - 7}px, ${anchor.y - 7}px, 0) scale(1)`;
+    el.style.opacity = '1';
+  }
+
+  hideLongPressIndicator() {
+    if (!this._longPressEl) return;
+    this._longPressEl.style.opacity = '0';
+    // Keep current position so it fades out in place.
   }
 
   _enterRenameMode() {
@@ -1196,6 +1374,7 @@ export class UI {
     // Cache state so async handlers (era info icon click, etc.) can read
     // the current era without us having to pass state into every closure.
     this._lastState = state;
+    this._stateRef  = state;
 
     const era = state.currentEra();
     if (this.elEra.textContent !== era.name) this.elEra.textContent = era.name;

@@ -56,7 +56,8 @@ export class GameState {
       thermalScanlineIntensity: 1.0,     // multiplier on scanline grain (0..2)
       thermalShowScale:         true,    // show cold-to-warm temperature legend
       cursorStyle:              'crosshair', // pointer style over the canvas
-      touchOffsetPx:            0        // vertical offset (CSS px) lifting touch input above the fingertip
+      touchOffsetPx:            0,       // vertical offset (CSS px) lifting touch input above the fingertip
+      showTouchPointer:         false    // render the chosen cursor glyph at the touch location
     };
 
     // External save hook, main.js sets this so state mutations that must

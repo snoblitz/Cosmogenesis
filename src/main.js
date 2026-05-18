@@ -124,14 +124,18 @@ const LONG_PRESS_MS = 550;  // touch/pen hold-to-open-context-menu threshold
 // Long-press timer. When a touch starts on a macro and stays still for
 // LONG_PRESS_MS, fire the context menu and cancel the pending pin.
 let longPressTimer = null;
+let longPressIndicatorTimer = null;
 let longPressMacroId = null;
 let longPressOrigin = null; // { clientX, clientY }
 
 function clearLongPress() {
   if (longPressTimer) clearTimeout(longPressTimer);
+  if (longPressIndicatorTimer) clearTimeout(longPressIndicatorTimer);
   longPressTimer = null;
+  longPressIndicatorTimer = null;
   longPressMacroId = null;
   longPressOrigin = null;
+  if (ui && ui.hideLongPressIndicator) ui.hideLongPressIndicator();
 }
 
 // Normalize pointer type so finger contacts on Windows touchscreens that
@@ -294,6 +298,14 @@ function macroMenuOpts(m, clientX, clientY) {
   };
 }
 
+function touchPointerClient(e) {
+  // The visible touch pointer should appear where the spawn lands — i.e.,
+  // at the offset-adjusted point, in client (viewport) coordinates.
+  const off = (state && state.settings && typeof state.settings.touchOffsetPx === 'number')
+    ? state.settings.touchOffsetPx : 0;
+  return { x: e.clientX, y: e.clientY - off };
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   // Only the left mouse button spawns/pins; right-click is handled by the
   // contextmenu listener below.
@@ -304,6 +316,11 @@ canvas.addEventListener('pointerdown', (e) => {
   screenPos.y = y;
   pointerInside = true;
   lastPointerType = effectivePointerType(e);
+
+  if (lastPointerType === 'touch') {
+    const p = touchPointerClient(e);
+    ui.showTouchPointerAt(p.x, p.y);
+  }
 
   // Touch (or pen) on a macro: tentative pin. We hold off spawning until the
   // pointer either lifts (confirming the tap), moves past the slop (drag), or
@@ -318,6 +335,14 @@ canvas.addEventListener('pointerdown', (e) => {
       // Schedule long-press: if the user holds still, open the context menu.
       longPressMacroId = m.id;
       longPressOrigin = { clientX: e.clientX, clientY: e.clientY };
+      // Pre-indicator fades in at ~60% of the threshold, anchored where the
+      // menu will appear. Gives the player confidence their hold is registered.
+      const INDICATOR_LEAD_RATIO = 0.6;
+      longPressIndicatorTimer = setTimeout(() => {
+        if (ui && ui.showLongPressIndicator) {
+          ui.showLongPressIndicator(longPressOrigin.clientX, longPressOrigin.clientY);
+        }
+      }, Math.round(LONG_PRESS_MS * INDICATOR_LEAD_RATIO));
       longPressTimer = setTimeout(() => {
         // Re-validate: macro might have moved or merged; refetch by id.
         const mNow = findMacroById(longPressMacroId);
@@ -325,7 +350,7 @@ canvas.addEventListener('pointerdown', (e) => {
         // Cancel the pending pin: long-press wins.
         pendingPinId = null;
         pendingPinStart = null;
-        ui.showMacroContextMenu(macroMenuOpts(mNow, longPressOrigin.clientX, longPressOrigin.clientY));
+        ui.showMacroContextMenu({ ...macroMenuOpts(mNow, longPressOrigin.clientX, longPressOrigin.clientY), anchorMode: 'right' });
         clearLongPress();
       }, LONG_PRESS_MS);
 
@@ -362,6 +387,11 @@ canvas.addEventListener('pointermove', (e) => {
   screenPos.y = y;
   pointerInside = true;
   if (e.pointerType) lastPointerType = effectivePointerType(e);
+
+  if (lastPointerType === 'touch') {
+    const p = touchPointerClient(e);
+    ui.showTouchPointerAt(p.x, p.y);
+  }
 
   // If we have a pending pin (touch/pen on a macro), watch for drag.
   if (pendingPinId != null && pendingPinStart) {
@@ -402,6 +432,8 @@ function endHold(e) {
   if (e && (e.type === 'pointerup' || e.type === 'pointercancel')) {
     if (lastPointerType === 'touch') pointerInside = false;
   }
+  // Always hide the touch pointer overlay on lift/cancel/leave.
+  if (ui && ui.hideTouchPointer) ui.hideTouchPointer();
 }
 canvas.addEventListener('pointerup',     endHold);
 canvas.addEventListener('pointercancel', endHold);
