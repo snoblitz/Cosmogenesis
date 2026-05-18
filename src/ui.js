@@ -1089,8 +1089,8 @@ export class UI {
     const elbowX = anchorX + sign * horizLen;
     const elbowY = anchorY;
 
-    // Start point: just outside the macro's outer radius, aimed at the elbow
-    // so the angled segment exits cleanly from the body's edge (not center).
+    // Start point: the macro's center — the line reads as emanating from the
+    // body itself rather than tangent to its outer glow.
     const dxe = elbowX - mx;
     const dye = elbowY - my;
     const distToElbow = Math.hypot(dxe, dye);
@@ -1099,9 +1099,8 @@ export class UI {
       leader.hidden = true;
       return;
     }
-    const startGap = macroR + 4;
-    const sx = mx + (dxe / distToElbow) * startGap;
-    const sy = my + (dye / distToElbow) * startGap;
+    const sx = mx;
+    const sy = my;
 
     const fmt = (n) => n.toFixed(1);
     line.setAttribute(
