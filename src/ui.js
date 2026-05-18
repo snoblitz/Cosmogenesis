@@ -938,23 +938,107 @@ export class UI {
       this._inspectorHeight = rect.height;
     }
 
+    const w = this._inspectorWidth;
+    const h = this._inspectorHeight;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const pad = 8;
-    const offset = Math.max(14, (data.macroRadiusCss || 12) + 14);
-    let x = data.screenX + offset;
-    let y = data.screenY - this._inspectorHeight / 2;
+    const pad = 12;
+    const macroR = data.macroRadiusCss || 12;
+    // Real breathing room — never butt up against the body.
+    const gap = Math.max(32, macroR + 28);
+    const diagGap = gap * 0.72;
+    const mx = data.screenX;
+    const my = data.screenY;
 
-    if (x + this._inspectorWidth > vw - pad) {
-      x = data.screenX - offset - this._inspectorWidth;
+    // Candidate anchors around the macro. Order is preference on ties.
+    const candidates = [
+      { x: mx + gap,                y: my - h / 2,             dir: 'right',  bias: 3 },
+      { x: mx - gap - w,            y: my - h / 2,             dir: 'left',   bias: 2 },
+      { x: mx - w / 2,              y: my - gap - h,           dir: 'top',    bias: 1 },
+      { x: mx - w / 2,              y: my + gap,               dir: 'bottom', bias: 1 },
+      { x: mx + diagGap,            y: my - diagGap - h,       dir: 'tr',     bias: 0 },
+      { x: mx + diagGap,            y: my + diagGap,           dir: 'br',     bias: 0 },
+      { x: mx - diagGap - w,        y: my - diagGap - h,       dir: 'tl',     bias: 0 },
+      { x: mx - diagGap - w,        y: my + diagGap,           dir: 'bl',     bias: 0 },
+    ];
+
+    const avoid = this._collectInspectorAvoidRects();
+    const area = Math.max(1, w * h);
+    let best = null;
+
+    for (const c of candidates) {
+      const clampedX = Math.max(pad, Math.min(vw - pad - w, c.x));
+      const clampedY = Math.max(pad, Math.min(vh - pad - h, c.y));
+      const shiftX = Math.abs(clampedX - c.x);
+      const shiftY = Math.abs(clampedY - c.y);
+      const rect = {
+        left:   clampedX,
+        top:    clampedY,
+        right:  clampedX + w,
+        bottom: clampedY + h,
+      };
+
+      let score = 100 + c.bias;
+      // Penalty for needing to clamp away from the natural anchor.
+      score -= (shiftX + shiftY) * 0.25;
+
+      // Penalty for overlapping any visible UI rect (HUD panels, chrome buttons).
+      let overlap = 0;
+      for (const ar of avoid) {
+        const ox = Math.max(0, Math.min(rect.right, ar.right) - Math.max(rect.left, ar.left));
+        const oy = Math.max(0, Math.min(rect.bottom, ar.bottom) - Math.max(rect.top, ar.top));
+        overlap += ox * oy;
+      }
+      score -= (overlap / area) * 600;
+
+      // Penalty for sitting on top of the macro (closest panel-edge point to body).
+      const px = Math.max(rect.left, Math.min(rect.right, mx));
+      const py = Math.max(rect.top,  Math.min(rect.bottom, my));
+      const distToMacro = Math.hypot(px - mx, py - my);
+      const minDist = macroR + 16;
+      if (distToMacro < minDist) score -= (minDist - distToMacro) * 4;
+
+      if (!best || score > best.score) {
+        best = { x: clampedX, y: clampedY, score, dir: c.dir };
+      }
     }
-    if (x < pad) x = pad;
-    if (x + this._inspectorWidth > vw - pad) x = vw - pad - this._inspectorWidth;
-    if (y < pad) y = pad;
-    if (y + this._inspectorHeight > vh - pad) y = vh - pad - this._inspectorHeight;
 
-    el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
-    this._positionInspectorLeader(data, x, y);
+    const finalX = best ? best.x : Math.max(pad, Math.min(vw - pad - w, mx + gap));
+    const finalY = best ? best.y : Math.max(pad, Math.min(vh - pad - h, my - h / 2));
+
+    el.style.transform = `translate3d(${Math.round(finalX)}px, ${Math.round(finalY)}px, 0)`;
+    this._positionInspectorLeader(data, finalX, finalY);
+  }
+
+  // Returns viewport-space rects for any on-screen UI we should not occlude.
+  // Recomputed each call: rects change with HUD toggles, viewport size, and
+  // panel collapses. Cost is small (a handful of getBoundingClientRect calls).
+  _collectInspectorAvoidRects() {
+    if (!this._inspectorAvoidIds) {
+      this._inspectorAvoidIds = [
+        'hud-left',           // era / stats column
+        'hud-top-right',      // laws + catalog column
+        'hud-bottom',         // hint strip
+        'hud-catalog',        // catalog panel (when broken out)
+        'settings-panel',     // open settings drawer
+        'settings-btn',
+        'mute-btn',
+        'reset-btn',
+        'recenter-btn',
+        'discovery-banner',
+        'macro-context-menu',
+        'info-tooltip',
+      ];
+    }
+    const out = [];
+    for (const id of this._inspectorAvoidIds) {
+      const el = document.getElementById(id);
+      if (!el || el.hidden) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue;
+      out.push(r);
+    }
+    return out;
   }
 
   _positionInspectorLeader(data, panelX, panelY) {
