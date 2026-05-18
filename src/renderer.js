@@ -548,17 +548,20 @@ export class Renderer {
       const gy = cy + Math.sin(angle) * radius;
 
       // Brightness envelope: faint at the halo edge, peaks mid-fall,
-      // drops out as the grain is absorbed. Dust hue is a dusty amber
-      // (independent of macro hue) so it reads against both cool blue
-      // Structures and warm gold Cradles instead of camouflaging into
-      // the body's own glow. Inner grains shift slightly warmer/brighter
-      // as they accelerate (frictional heating).
+      // drops out as the grain is absorbed. Dust hue is always offset
+      // 150 degrees from the macro's hue (with small per-grain jitter),
+      // so the swirl never camouflages into the body -- cool-blue
+      // Structures get warm amber dust, warm-gold Cradles get cool
+      // steel-blue dust, violets get yellow-green, etc. Per-grain
+      // "heating up" is expressed in lightness/saturation only, never
+      // a hue shift, so we never drift back toward the macro color.
       const env = Math.sin(phase * Math.PI);
       const dotR = (0.6 + 1.1 * (1 - fall) + r3 * 0.3) * this.dpr;
       const dotA = 0.26 * intensity * env;
-      const dustHue = 28 + (1 - fall) * 22 + (r3 - 0.5) * 8;
+      const dustHue = ((m.hue || 0) + 150 + (r3 - 0.5) * 14) % 360;
       const lightness = 72 + 14 * (1 - fall);
-      ctx.fillStyle = `hsla(${dustHue}, 78%, ${lightness}%, ${dotA})`;
+      const sat       = 78 + 8  * (1 - fall);
+      ctx.fillStyle = `hsla(${dustHue}, ${sat}%, ${lightness}%, ${dotA})`;
       ctx.beginPath();
       ctx.arc(gx, gy, dotR, 0, TWO_PI);
       ctx.fill();
