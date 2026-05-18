@@ -49,7 +49,7 @@ export class Renderer {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.audio = audio || null;
     this.dpr = 1;
-    this.stars = this._makeStars(220);
+    this.stars = this._makeStars(1400);
     this.frame = 0;
     this.lastT = performance.now();
 
@@ -115,7 +115,7 @@ export class Renderer {
 
   setDPR(dpr) {
     this.dpr = dpr;
-    this.stars = this._makeStars(220);
+    this.stars = this._makeStars(1400);
     // Sprites are resolution-independent, they get scaled by drawImage.
   }
 
@@ -179,11 +179,32 @@ export class Renderer {
   _makeStars(n) {
     const out = [];
     for (let i = 0; i < n; i++) {
+      // Sparse color variety: most stars are neutral white, but a meaningful
+      // minority pick up cool blue or warm amber tints. This blends the
+      // background visually with the same color palette the simulated matter
+      // uses (cold blue young particles, warm gold accumulated mass), so when
+      // the camera pulls way out at First Light the bounded matter zone does
+      // not read as a rectangle of dots against a wall of white pinpricks.
+      const r = Math.random();
+      let color;
+      if      (r < 0.78) color = [255, 255, 255];                 // neutral white (majority)
+      else if (r < 0.86) color = [180, 210, 255];                 // pale blue (young matter palette)
+      else if (r < 0.93) color = [255, 220, 170];                 // pale amber (warm matter palette)
+      else if (r < 0.97) color = [220, 200, 255];                 // pale violet (nebular)
+      else               color = [255, 195, 180];                 // pale rose (distant red giants)
+
+      // Long-tail size distribution: most are tiny pinpricks; a few are
+      // bigger "deep field" markers that read as distant galaxies/clusters.
+      const sizeRoll = Math.random();
+      const size = sizeRoll < 0.92 ? (0.4 + Math.random() * 1.0)
+                                   : (1.8 + Math.random() * 1.6);
+
       out.push({
         x: Math.random(),
         y: Math.random(),
-        b: 0.15 + Math.random() * 0.55,
-        size: 0.5 + Math.random() * 1.4,
+        b: 0.10 + Math.random() * 0.50,
+        size,
+        color,
         twinkle: Math.random() * Math.PI * 2
       });
     }
@@ -354,7 +375,9 @@ export class Renderer {
       ctx.clip();
     }
 
-    // Background starfield (drift only, no zoom)
+    // Background starfield (drift only, no zoom). Each star carries its
+    // own color so the field reads as a populated cosmos rather than a
+    // monochrome grid of pinpricks.
     ctx.save();
     ctx.translate(cx + camDriftX * 0.25, cy + camDriftY * 0.25);
     ctx.rotate(camRot * 0.4);
@@ -362,7 +385,8 @@ export class Renderer {
     const tw = this.frame * 0.02;
     for (const s of this.stars) {
       const a = s.b * (0.55 + 0.45 * Math.sin(tw + s.twinkle));
-      ctx.fillStyle = `rgba(255, 255, 255, ${a * 0.5})`;
+      const c = s.color || [255, 255, 255];
+      ctx.fillStyle = `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a * 0.5})`;
       ctx.fillRect(s.x * W, s.y * H, s.size * this.dpr, s.size * this.dpr);
     }
     ctx.restore();
