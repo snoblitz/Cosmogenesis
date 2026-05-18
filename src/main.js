@@ -363,6 +363,10 @@ canvas.addEventListener('pointerdown', (e) => {
 canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   if (!inspectorAllowed()) return;
+  // After a touch long-press, the browser synthesizes a contextmenu event on
+  // finger lift. The menu is already open in 'right' anchor mode -- don't
+  // re-open it in 'corner' mode and snap it below the lift point.
+  if (ui.isContextMenuOpen && ui.isContextMenuOpen()) return;
   const { x, y } = eventToScreen(e);
   const m = pickMacroAtScreen(x, y, 16);
   if (!m) return;
