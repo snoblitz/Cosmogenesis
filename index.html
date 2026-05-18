@@ -156,6 +156,19 @@
         <button type="button" class="mcm-item" data-action="track" role="menuitem">
           <span class="mcm-glyph">☆</span><span class="mcm-track-label">Track</span>
         </button>
+        <button type="button" class="mcm-item mcm-emitter-deploy" data-action="emitter-deploy" role="menuitem" hidden>
+          <span class="mcm-glyph">◉</span>
+          <span class="mcm-emitter-label">Deploy Emitter</span>
+          <span class="mcm-emitter-cost"></span>
+        </button>
+        <button type="button" class="mcm-item mcm-emitter-toggle" data-action="emitter-toggle" role="menuitem" hidden>
+          <span class="mcm-glyph mcm-emitter-toggle-glyph">⏸</span>
+          <span class="mcm-emitter-toggle-label">Pause Emitter</span>
+        </button>
+        <button type="button" class="mcm-item mcm-emitter-remove" data-action="emitter-remove" role="menuitem" hidden>
+          <span class="mcm-glyph">✕</span>
+          <span>Remove Emitter</span>
+        </button>
       </div>
       <form class="mcm-rename" hidden>
         <input type="text" class="mcm-input" maxlength="40" placeholder="Name this body" />

@@ -786,6 +786,23 @@ body {
 #macro-context-menu[data-kind="cradle"][data-tracked="1"] .mcm-item[data-action="track"] .mcm-glyph {
   color: #ffd49b;
 }
+#macro-context-menu .mcm-emitter-cost {
+  margin-left: auto;
+  opacity: 0.6;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+#macro-context-menu .mcm-item[data-action="emitter-deploy"][aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+#macro-context-menu .mcm-item[data-action="emitter-remove"] {
+  opacity: 0.75;
+}
+#macro-context-menu .mcm-item[data-action="emitter-remove"]:hover,
+#macro-context-menu .mcm-item[data-action="emitter-remove"]:focus-visible {
+  opacity: 1;
+}
 #macro-context-menu .mcm-rename {
   display: flex;
   flex-direction: column;

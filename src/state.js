@@ -7,6 +7,11 @@ import { ERAS, evaluateEra, FIRST_LIGHT_ERA } from './eras.js';
 import { findReadyWhisper } from './whispers.js';
 import { YEARS_PER_SECOND } from './simulation.js';
 
+export const EMITTER_COST_BASE = 50;
+export function emitterDeployCost(activeCount) {
+  return EMITTER_COST_BASE * Math.pow(2, activeCount);
+}
+
 const WHISPER_COOLDOWN_MS = 35000;
 
 export class GameState {

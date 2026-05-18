@@ -3,12 +3,12 @@
 
 import { Simulation } from './simulation.js';
 import { Renderer }   from './renderer.js';
-import { GameState }  from './state.js';
+import { GameState, emitterDeployCost }  from './state.js';
 import { UI }         from './ui.js';
 import { Audio }      from './audio.js';
 import { loadGame, saveGame, clearSave, setFreshUntil } from './save.js';
 import { ERAS, MIN_ZOOM, FIRST_LIGHT_ERA } from './eras.js';
-import { MACRO_CRADLE_THRESHOLD } from './simulation.js';
+import { MACRO_CRADLE_THRESHOLD, EMITTER_ERA_GATE } from './simulation.js';
 import './mobile.js';
 import './ios-install-hint.js';
 
@@ -45,6 +45,42 @@ ui.onMacroTrackToggle = (id, nextTracked) => {
   sim.setMacroTracked(id, nextTracked);
   if (state.requestSave) state.requestSave();
 };
+ui.onEmitterDeploy = (macroId) => {
+  if (state.eraIndex < EMITTER_ERA_GATE) return;
+  const count = sim.deployedEmitterCount();
+  const cost = emitterDeployCost(count);
+  if (state.potential < cost) return;
+  const emitter = sim.deployEmitter(macroId);
+  if (!emitter) return;
+  state.potential -= cost;
+  state.requestSave?.();
+  ui.refreshContextMenuForMacro?.(macroId);
+};
+ui.onEmitterPauseToggle = (macroId) => {
+  const e = sim.getEmitterForMacro(macroId);
+  if (!e) return;
+  sim.setEmitterPaused(macroId, !e.paused);
+  state.requestSave?.();
+  ui.refreshContextMenuForMacro?.(macroId);
+};
+ui.onEmitterRemove = (macroId) => {
+  if (!sim.removeEmitter(macroId)) return;
+  state.requestSave?.();
+  ui.refreshContextMenuForMacro?.(macroId);
+};
+function buildEmitterMenuContext(macroId) {
+  const e = sim.getEmitterForMacro(macroId);
+  const emitterState = !e ? 'none' : (e.paused ? 'paused' : 'active');
+  const deployCost = emitterDeployCost(sim.deployedEmitterCount());
+  return {
+    emitterState,
+    eraIndex: state.eraIndex,
+    deployCost,
+    canAfford: state.potential >= deployCost,
+    emitterEraGate: EMITTER_ERA_GATE,
+  };
+}
+ui.getEmitterMenuContext = buildEmitterMenuContext;
 ui.onCatalogEntryClick = (id) => {
   inspectorPinId = id;
   inspectorPinSource = 'catalog';
@@ -314,7 +350,8 @@ function macroMenuOpts(m, clientX, clientY) {
     screenY: clientY,
     kind: m.kind,
     name: m.name || null,
-    tracked: !!m.tracked
+    tracked: !!m.tracked,
+    ...buildEmitterMenuContext(m.id)
   };
 }
 

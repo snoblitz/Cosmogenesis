@@ -293,6 +293,12 @@ export class UI {
     this.elContextMenuInput  = this.elContextMenu?.querySelector('.mcm-input') || null;
     this.elContextMenuTrackLabel = this.elContextMenu?.querySelector('.mcm-track-label') || null;
     this.elContextMenuTrackGlyph = this.elContextMenu?.querySelector('.mcm-item[data-action="track"] .mcm-glyph') || null;
+    this.elContextMenuEmitterDeploy = this.elContextMenu?.querySelector('.mcm-item[data-action="emitter-deploy"]') || null;
+    this.elContextMenuEmitterDeployCost = this.elContextMenu?.querySelector('.mcm-emitter-cost') || null;
+    this.elContextMenuEmitterToggle = this.elContextMenu?.querySelector('.mcm-item[data-action="emitter-toggle"]') || null;
+    this.elContextMenuEmitterToggleLabel = this.elContextMenu?.querySelector('.mcm-emitter-toggle-label') || null;
+    this.elContextMenuEmitterToggleGlyph = this.elContextMenu?.querySelector('.mcm-emitter-toggle-glyph') || null;
+    this.elContextMenuEmitterRemove = this.elContextMenu?.querySelector('.mcm-item[data-action="emitter-remove"]') || null;
     this._contextMenuOpen = false;
     this._contextMenuMacroId = null;
     this._contextMenuMode = 'actions'; // 'actions' | 'rename'
@@ -300,6 +306,10 @@ export class UI {
     // External callbacks set by main.js so the input layer can react.
     this.onMacroRename       = null;  // (macroId, newName) => void
     this.onMacroTrackToggle  = null;  // (macroId, nextTracked) => void
+    this.onEmitterDeploy = null;
+    this.onEmitterPauseToggle = null;
+    this.onEmitterRemove = null;
+    this.getEmitterMenuContext = null;
     this.onCatalogEntryClick = null;  // (macroId) => void
     this._wireContextMenu();
     this._renderedLawCount = 0;
@@ -1149,6 +1159,20 @@ export class UI {
         const action = btn.dataset.action;
         if (action === 'rename') this._enterRenameMode();
         else if (action === 'track') this._toggleTrackFromMenu();
+        else if (action === 'emitter-deploy') {
+          if (btn.getAttribute('aria-disabled') === 'true') return;
+          const macroId = this._contextMenuMacroId;
+          if (typeof this.onEmitterDeploy === 'function' && macroId != null) this.onEmitterDeploy(macroId);
+          this.hideMacroContextMenu();
+        } else if (action === 'emitter-toggle') {
+          const macroId = this._contextMenuMacroId;
+          if (typeof this.onEmitterPauseToggle === 'function' && macroId != null) this.onEmitterPauseToggle(macroId);
+          this.hideMacroContextMenu();
+        } else if (action === 'emitter-remove') {
+          const macroId = this._contextMenuMacroId;
+          if (typeof this.onEmitterRemove === 'function' && macroId != null) this.onEmitterRemove(macroId);
+          this.hideMacroContextMenu();
+        }
       });
     }
 
@@ -1218,6 +1242,7 @@ export class UI {
     if (this.elContextMenuTrackGlyph) {
       this.elContextMenuTrackGlyph.textContent = opts.tracked ? '★' : '☆';
     }
+    this._applyEmitterMenuState(opts.macroId, opts);
 
     // Start in actions mode (not rename) on every show.
     if (this.elContextMenuActions) this.elContextMenuActions.hidden = false;
@@ -1365,6 +1390,57 @@ export class UI {
       this.onMacroTrackToggle(id, nextTracked);
     }
     this.hideMacroContextMenu();
+  }
+
+  _applyEmitterMenuState(macroId, opts = null) {
+    const emitterCtx = (typeof this.getEmitterMenuContext === 'function')
+      ? this.getEmitterMenuContext(macroId)
+      : null;
+    const emitterState = emitterCtx?.emitterState ?? opts?.emitterState ?? 'none';
+    const eraIndex = emitterCtx?.eraIndex ?? opts?.eraIndex ?? 0;
+    const eraGate = emitterCtx?.emitterEraGate ?? opts?.emitterEraGate ?? 3;
+    const deployCost = emitterCtx?.deployCost ?? opts?.deployCost ?? 0;
+    const canAfford = emitterCtx?.canAfford ?? opts?.canAfford ?? false;
+
+    const showDeploy = emitterState === 'none' && eraIndex >= eraGate;
+    if (this.elContextMenuEmitterDeploy) {
+      this.elContextMenuEmitterDeploy.hidden = !showDeploy;
+      if (showDeploy) {
+        this.elContextMenuEmitterDeploy.setAttribute('aria-disabled', canAfford ? 'false' : 'true');
+        if (this.elContextMenuEmitterDeployCost) {
+          this.elContextMenuEmitterDeployCost.textContent = `${fmt(deployCost)} Potential`;
+        }
+      } else {
+        this.elContextMenuEmitterDeploy.setAttribute('aria-disabled', 'false');
+        if (this.elContextMenuEmitterDeployCost) this.elContextMenuEmitterDeployCost.textContent = '';
+      }
+    }
+
+    const showToggle = emitterState !== 'none';
+    if (this.elContextMenuEmitterToggle) {
+      this.elContextMenuEmitterToggle.hidden = !showToggle;
+      if (showToggle) {
+        const paused = emitterState === 'paused';
+        if (this.elContextMenuEmitterToggleLabel) {
+          this.elContextMenuEmitterToggleLabel.textContent = paused ? 'Resume Emitter' : 'Pause Emitter';
+        }
+        if (this.elContextMenuEmitterToggleGlyph) {
+          this.elContextMenuEmitterToggleGlyph.textContent = paused ? '▶' : '⏸';
+        }
+      }
+    }
+
+    if (this.elContextMenuEmitterRemove) {
+      this.elContextMenuEmitterRemove.hidden = emitterState === 'none';
+    }
+  }
+
+  refreshContextMenuForMacro(macroId) {
+    if (!this._contextMenuOpen || this._contextMenuMacroId !== macroId) return;
+    this._applyEmitterMenuState(macroId);
+    if (this._contextMenuLastX != null) {
+      this._positionContextMenu(this._contextMenuLastX, this._contextMenuLastY);
+    }
   }
 
   // Build / refresh the Catalog panel. Lists every macro with `tracked=true`.

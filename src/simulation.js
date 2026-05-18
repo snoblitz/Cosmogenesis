@@ -10,6 +10,10 @@ export const MACRO_MASS_THRESHOLD = 25; // mass at which a particle promotes to 
 export const MAX_MACROS = 40;           // cap macros to keep render cheap
 export const MACRO_CRADLE_THRESHOLD = 500; // mass at which a macro is a "Cradle" (rare, meaningful)
 export const STAR_IGNITION_THRESHOLD = 1500;
+export const EMITTER_RATE_HZ = 0.5;       // particles per second per active emitter
+const EMITTER_OFFSET = 30;                // world-px from macro edge (not center)
+const EMITTER_PARTICLE_SPEED = 12;        // initial speed toward macro
+export const EMITTER_ERA_GATE = 3;        // earliest era index that allows deploy
 // Cosmic time scale: every real second of sim time represents this many years
 // in the player-facing universe. Internal dt math stays in real seconds; this
 // only affects what we *show* the player (auto-name suffix, ages, etc.).
@@ -25,7 +29,9 @@ export class Simulation {
   constructor() {
     this.particles = [];
     this.macros = [];
+    this.emitters = [];
     this.nextId = 1;
+    this._nextEmitterId = 1;
     this.bounds = { w: 1920, h: 1080 };
     this.eraLevel = 0;       // 0 none, 1 attraction, 2 merging+macros, 3 strong macro pull
     this.totalMerges = 0;
@@ -54,7 +60,59 @@ export class Simulation {
     return best;
   }
 
+  _macroById(id) {
+    for (const m of this.macros) {
+      if (m.id === id) return m;
+    }
+    return null;
+  }
+
+  getEmitterForMacro(macroId) {
+    for (const emitter of this.emitters) {
+      if (emitter.macroId === macroId) return emitter;
+    }
+    return null;
+  }
+
+  deployedEmitterCount() {
+    return this.emitters.length;
+  }
+
+  deployEmitter(macroId) {
+    if (!this._macroById(macroId)) return null;
+    if (this.getEmitterForMacro(macroId)) return null;
+    const emitter = {
+      id: this._nextEmitterId++,
+      macroId,
+      angle: Math.random() * Math.PI * 2,
+      paused: false,
+      accum: 0
+    };
+    this.emitters.push(emitter);
+    return emitter;
+  }
+
+  removeEmitter(macroId) {
+    const idx = this.emitters.findIndex(e => e.macroId === macroId);
+    if (idx < 0) return false;
+    this.emitters.splice(idx, 1);
+    return true;
+  }
+
+  setEmitterPaused(macroId, paused) {
+    const emitter = this.getEmitterForMacro(macroId);
+    if (!emitter) return false;
+    emitter.paused = !!paused;
+    return true;
+  }
+
   spawnParticle(x, y) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 6 + 1.5;
+    return this.spawnParticleWithVelocity(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed);
+  }
+
+  spawnParticleWithVelocity(x, y, vx, vy) {
     if (this.particles.length >= MAX_PARTICLES) {
       // Drop the oldest non-massive particle to make room
       let oldestIdx = -1;
@@ -66,20 +124,19 @@ export class Simulation {
       if (oldestIdx >= 0) this.particles.splice(oldestIdx, 1);
       else this.particles.shift();
     }
-    const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * 6 + 1.5;
-    this.particles.push({
+    const particle = {
       id: this.nextId++,
       x, y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
+      vx, vy,
       mass: 1,
       r: 2.2,
       hue: 195 + Math.random() * 95,   // blue → violet → magenta range
       age: 0,
       alive: true
-    });
+    };
+    this.particles.push(particle);
     this.totalSpawned++;
+    return particle;
   }
 
   // Build a uniform spatial grid for neighbor lookups
@@ -100,7 +157,8 @@ export class Simulation {
   }
 
   tick(dt) {
-    if (dt <= 0 || this.particles.length === 0 && this.macros.length === 0) {
+    if (dt <= 0) return;
+    if (this.particles.length === 0 && this.macros.length === 0 && this.emitters.length === 0) {
       // Still age particles for fade-in even with no physics, and keep the
       // timeline ticking so auto-names reflect real elapsed time.
       for (const p of this.particles) p.age += dt;
@@ -186,7 +244,34 @@ export class Simulation {
       this._mergeMacros();
     }
 
-    // 7. Auto-name promotion: a Structure that has grown past the Cradle
+    // 7. Emitters: auto-spawn particles around a parent macro and feed them
+    // inward. Emitters tied to absorbed macros are culled here.
+    for (let i = this.emitters.length - 1; i >= 0; i--) {
+      const emitter = this.emitters[i];
+      const macro = this._macroById(emitter.macroId);
+      if (!macro) {
+        this.emitters.splice(i, 1);
+        continue;
+      }
+      if (emitter.paused) continue;
+      emitter.accum += dt;
+      const interval = 1 / EMITTER_RATE_HZ;
+      while (emitter.accum >= interval) {
+        emitter.accum -= interval;
+        const cos = Math.cos(emitter.angle);
+        const sin = Math.sin(emitter.angle);
+        const x = macro.x + cos * (macro.r + EMITTER_OFFSET);
+        const y = macro.y + sin * (macro.r + EMITTER_OFFSET);
+        this.spawnParticleWithVelocity(
+          x,
+          y,
+          -cos * EMITTER_PARTICLE_SPEED,
+          -sin * EMITTER_PARTICLE_SPEED
+        );
+      }
+    }
+
+    // 8. Auto-name promotion: a Structure that has grown past the Cradle
     // threshold (via macro-macro merges) should reflect its new status. We
     // only rewrite names that still match the exact original auto-name; any
     // player-renamed body keeps the name they gave it.
@@ -394,6 +479,12 @@ export class Simulation {
         tracked: !!m.tracked,
         history: Array.isArray(m.history) ? m.history.slice() : []
       })),
+      emitters: this.emitters.map(e => ({
+        macroId: e.macroId,
+        angle: e.angle,
+        paused: e.paused,
+        accum: e.accum
+      })),
       nextId: this.nextId,
       eraLevel: this.eraLevel,
       totalMerges: this.totalMerges,
@@ -402,12 +493,15 @@ export class Simulation {
     };
   }
 
-  deserialize(d) {
-    this.particles  = Array.isArray(d.particles) ? d.particles : [];
-    this.macros     = Array.isArray(d.macros)    ? d.macros    : [];
-    this.nextId       = d.nextId       || 1;
-    this.eraLevel     = d.eraLevel     || 0;
-    this.totalMerges  = d.totalMerges  || 0;
+  loadFromJSON(d) {
+    d = d || {};
+    this.particles = Array.isArray(d.particles) ? d.particles : [];
+    this.macros = Array.isArray(d.macros) ? d.macros : [];
+    this.emitters = [];
+    this.nextId = d.nextId || 1;
+    this._nextEmitterId = 1;
+    this.eraLevel = d.eraLevel || 0;
+    this.totalMerges = d.totalMerges || 0;
     this.totalSpawned = d.totalSpawned || 0;
     this.totalElapsedS = typeof d.totalElapsedS === 'number' ? d.totalElapsedS : 0;
 
@@ -447,5 +541,22 @@ export class Simulation {
       }
       if (!m.ignitionAnim || typeof m.ignitionAnim !== 'object') m.ignitionAnim = null;
     }
+
+    if (Array.isArray(d.emitters)) {
+      for (const e of d.emitters) {
+        if (!e || typeof e !== 'object' || !this._macroById(e.macroId)) continue;
+        this.emitters.push({
+          id: this._nextEmitterId++,
+          macroId: e.macroId,
+          angle: typeof e.angle === 'number' ? e.angle : 0,
+          paused: !!e.paused,
+          accum: typeof e.accum === 'number' ? e.accum : 0
+        });
+      }
+    }
+  }
+
+  deserialize(d) {
+    this.loadFromJSON(d);
   }
 }
