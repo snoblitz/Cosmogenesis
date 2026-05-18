@@ -1257,6 +1257,24 @@ body {
 }
 #recenter-btn[hidden] { display: none; }
 
+/* Camera zoom readout: small numeric pill that sits to the left of the
+   recenter button. Always visible, updates every frame. Tabular numerals
+   so the value doesn't dance as digits change. */
+#zoom-indicator {
+  position: absolute;
+  bottom: 168px;
+  right: 72px;
+  height: 40px;
+  line-height: 40px;
+  padding: 0 4px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.6px;
+  text-align: right;
+  pointer-events: none;
+}
+
 /* Settings button: sits above the reset button, same circular chrome. */
 #settings-btn {
   position: absolute;

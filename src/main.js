@@ -19,6 +19,8 @@ const renderer = new Renderer(canvas, audio);
 const state  = new GameState();
 const ui     = new UI();
 let placementMode = false;
+const elZoomIndicator = document.getElementById('zoom-indicator');
+let _prevZoomLabel = '';
 
 // --- Load saved game ---
 const saved = loadGame();
@@ -1012,6 +1014,17 @@ function frame(now) {
   ui.updateTools?.();
   resolveInspector();
   ui.renderCatalog(sim, inspectorPinId, MACRO_CRADLE_THRESHOLD);
+
+  // Zoom indicator: shows current camera magnification (e.g. "0.22×")
+  // so the player knows exactly what zoom level they are observing at.
+  // Same scale we use when discussing zoom internally.
+  if (elZoomIndicator) {
+    const label = renderer.zoom.toFixed(2) + '\u00d7';
+    if (label !== _prevZoomLabel) {
+      elZoomIndicator.textContent = label;
+      _prevZoomLabel = label;
+    }
+  }
 
   requestAnimationFrame(frame);
 }
