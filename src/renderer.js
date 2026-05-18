@@ -504,75 +504,60 @@ export class Renderer {
       ctx.fill();
     }
 
-    // 3) Feeding funnels — dust streams curling inward from the halo edge
-    // toward the macro. Each funnel is a wide soft underlay (gives the
-    // wisp continuity) plus a sequence of overlapping dust grains sampled
-    // along the curve. Grains taper from large/dim at the outer end to
-    // small/bright as they spiral toward the macro, so the trail reads as
-    // a narrowing funnel rather than a uniform line. Additive blending
-    // merges the grain overlap into a continuous dusty sweep.
-    const streamCount = 3 + Math.round(intensity * 2); // 3..5
-    ctx.lineCap = 'round';
-    for (let i = 0; i < streamCount; i++) {
-      const a0 = seed * 1.3 + i * (Math.PI * 2 / streamCount) + tSec * 0.06;
-      const phase = ((tSec * 0.22 + i * 0.41 + seed * 0.5) % 1);
-      const startR = haloR * (1.0 - phase * 0.4);
-      const endR   = innerR + (haloR - innerR) * Math.max(0, 0.7 - phase);
-      if (endR >= startR - r * 0.5) continue;
-      const swirl = 0.7;
-      const sx = cx + Math.cos(a0) * startR;
-      const sy = cy + Math.sin(a0) * startR;
-      const ex = cx + Math.cos(a0 + swirl) * endR;
-      const ey = cy + Math.sin(a0 + swirl) * endR;
-      const midR = (startR + endR) * 0.5;
-      const qx = cx + Math.cos(a0 + swirl * 0.5) * midR;
-      const qy = cy + Math.sin(a0 + swirl * 0.5) * midR;
-      // Sin envelope: fades the funnel in then out across its phase so
-      // streams appear and dissolve asynchronously rather than blinking.
-      const fade = Math.sin(phase * Math.PI);
-      if (fade <= 0.02) continue;
+    // 3) Infalling dust cloud — instead of drawing per-arm curves (which
+    // read as straight spotlight beams at typical macro scale), populate
+    // a swirling cloud of grain particles around the macro. Each grain
+    // has a 0..1 lifetime phase that loops every CYCLE_S seconds: at
+    // phase 0 it's at the halo edge, at phase 1 it's been swallowed.
+    // Combined with a small log-spiral twist, the grain population
+    // self-organizes into faint trailing arms that visibly spiral
+    // inward, giving the funnel-of-dust read.
+    const grainCount = 14 + Math.floor(intensity * 30); // 14..44
+    const ARMS = 3;
+    const CYCLE_S = 7.5;
+    const TWO_PI = Math.PI * 2;
+    const armBase = TWO_PI / ARMS;
+    // Per-macro spin direction so neighboring macros don't all rotate the
+    // same way -- avoids "synchronized choreography" look.
+    const spinDir = ((m.id || 0) & 1) ? 1 : -1;
+    for (let k = 0; k < grainCount; k++) {
+      // Deterministic per-grain randoms in [0, 1).
+      const h1 = Math.sin(k * 12.9898 + seed * 7.31) * 43758.5453;
+      const h2 = Math.sin(k * 78.233  + seed * 3.17) * 24634.6345;
+      const h3 = Math.sin(k * 39.349  + seed * 5.91) * 19349.1031;
+      const r1 = h1 - Math.floor(h1);
+      const r2 = h2 - Math.floor(h2);
+      const r3 = h3 - Math.floor(h3);
 
-      // Wide soft underlay sweep along the same quadratic, just enough
-      // to bind the dust grains into a continuous wisp.
-      ctx.lineWidth = r * 1.4;
-      ctx.strokeStyle = `hsla(${m.hue}, 70%, 60%, ${0.06 * intensity * fade})`;
+      // Lifetime phase (offset per grain so the population is staggered).
+      const phase = ((tSec / CYCLE_S) + r1) % 1;
+
+      // Radial fall: ease-in toward macro so grains seem to accelerate
+      // (Kepler vibe without simulating real gravity here).
+      const fall = phase * phase;
+      const radius = haloR - (haloR - innerR) * fall;
+
+      // Twist + base orbital sweep + arm slot + per-grain jitter angle.
+      const arm = k % ARMS;
+      const twist = phase * 3.4; // total angular travel during a fall
+      const orbital = tSec * 0.55 * spinDir;
+      const armJitter = (r2 - 0.5) * 0.35; // <±10°ish, breaks up arms
+      const angle = arm * armBase + twist * spinDir + orbital + armJitter + seed;
+
+      const gx = cx + Math.cos(angle) * radius;
+      const gy = cy + Math.sin(angle) * radius;
+
+      // Brightness envelope: faint at the halo edge, peaks mid-fall,
+      // drops out as the grain is absorbed. Inner grains are also a
+      // touch brighter and warmer (heating up as they fall).
+      const env = Math.sin(phase * Math.PI);
+      const dotR = (0.6 + 1.1 * (1 - fall) + r3 * 0.3) * this.dpr;
+      const dotA = 0.22 * intensity * env;
+      const lightness = 70 + 12 * (1 - fall);
+      ctx.fillStyle = `hsla(${m.hue}, 78%, ${lightness}%, ${dotA})`;
       ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.quadraticCurveTo(qx, qy, ex, ey);
-      ctx.stroke();
-
-      // Dust grains sampled along the curve via the quadratic Bézier
-      // formula. Perpendicular jitter (deterministic from seed + i + s)
-      // breaks up the line so the grains read as scattered dust rather
-      // than beads on a string.
-      const samples = 12;
-      for (let s = 0; s < samples; s++) {
-        const u = s / (samples - 1);
-        const om = 1 - u;
-        const bx = om * om * sx + 2 * om * u * qx + u * u * ex;
-        const by = om * om * sy + 2 * om * u * qy + u * u * ey;
-        // Perpendicular unit vector at this curve sample (derivative of
-        // the quadratic, normalized) for jitter direction.
-        const tdx = 2 * om * (qx - sx) + 2 * u * (ex - qx);
-        const tdy = 2 * om * (qy - sy) + 2 * u * (ey - qy);
-        const tdLen = Math.hypot(tdx, tdy) || 1;
-        const pnx = -tdy / tdLen;
-        const pny =  tdx / tdLen;
-        // Deterministic hash → [-1, 1] jitter, scaled by funnel width
-        // (wide at outer, tight at inner).
-        const taper = 1 - u; // 1 outer → 0 macro
-        const h = Math.sin((seed + i * 17.3 + s * 5.71) * 12.9898) * 43758.5453;
-        const j = (h - Math.floor(h)) * 2 - 1;
-        const widthHere = r * (0.25 + 0.95 * taper);
-        const gx = bx + pnx * j * widthHere;
-        const gy = by + pny * j * widthHere;
-        const dotR = (0.7 + 1.5 * taper) * this.dpr;
-        const dotA = 0.22 * intensity * fade * (0.55 + 0.45 * (1 - taper));
-        ctx.fillStyle = `hsla(${m.hue}, 78%, ${72 + 8 * (1 - taper)}%, ${dotA})`;
-        ctx.beginPath();
-        ctx.arc(gx, gy, dotR, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.arc(gx, gy, dotR, 0, TWO_PI);
+      ctx.fill();
     }
 
     // 4) Accretion ring — only flares when the macro is actively growing.
