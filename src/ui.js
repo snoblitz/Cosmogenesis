@@ -262,6 +262,7 @@ export class UI {
     this.elInspectorFilRow = this.elInspector?.querySelector('.mi-row-filaments') || null;
     this.elInspectorHint = this.elInspector?.querySelector('.mi-hint') || null;
     this.elInspectorLeader = document.getElementById('inspector-leader');
+    this.elInspectorLeaderLine = this.elInspectorLeader?.querySelector('polyline') || null;
     this.elCatalogPanel  = document.getElementById('hud-catalog');
     this.elCatalogList   = document.getElementById('catalog-list');
     this._catalogNodes   = new Map();   // macroId -> { li, titleEl, subEl, timelineEl }
@@ -1043,10 +1044,15 @@ export class UI {
 
   _positionInspectorLeader(data, panelX, panelY) {
     const leader = this.elInspectorLeader;
-    if (!leader) return;
+    const line = this.elInspectorLeaderLine;
+    if (!leader || !line) return;
+
+    // Only draw a leader line when the inspector was opened from the catalog.
+    // Hover and tap selection from the viewport don't need it — the cursor /
+    // finger already makes the link obvious.
     const w = this._inspectorWidth;
     const h = this._inspectorHeight;
-    if (w <= 0 || h <= 0) {
+    if (data.source !== 'catalog' || w <= 0 || h <= 0) {
       leader.removeAttribute('data-visible');
       leader.hidden = true;
       return;
@@ -1054,31 +1060,46 @@ export class UI {
 
     const left = panelX, right = panelX + w;
     const top = panelY, bottom = panelY + h;
+    const midY = top + h / 2;
     const mx = data.screenX, my = data.screenY;
-
-    // Anchor point: nearest point on the panel rectangle to the macro center.
-    const ax = Math.max(left, Math.min(right, mx));
-    const ay = Math.max(top, Math.min(bottom, my));
-
-    // Endpoint near the macro: stop short of its outer edge so the line
-    // touches the body cleanly without overlapping it.
-    const dx = ax - mx, dy = ay - my;
-    const dist = Math.hypot(dx, dy);
     const macroR = data.macroRadiusCss || 12;
-    const gap = macroR + 4;
-    if (dist <= gap + 6) {
+
+    // Enter the panel horizontally on whichever side is closer to the macro.
+    // Anchor = midpoint of that vertical edge so the entry feels balanced
+    // against the panel content.
+    const enterRight = mx < (left + right) / 2;
+    const anchorX = enterRight ? left : right;
+    const anchorY = midY;
+
+    // Horizontal segment: a short run into the panel. Length scales with the
+    // horizontal gap so close panels don't get a huge stub.
+    const horizGap = Math.abs(anchorX - mx);
+    const horizLen = Math.max(18, Math.min(56, horizGap * 0.45));
+    const sign = enterRight ? -1 : 1; // direction from anchor back toward macro
+    const elbowX = anchorX + sign * horizLen;
+    const elbowY = anchorY;
+
+    // Start point: just outside the macro's outer radius, aimed at the elbow
+    // so the angled segment exits cleanly from the body's edge (not center).
+    const dxe = elbowX - mx;
+    const dye = elbowY - my;
+    const distToElbow = Math.hypot(dxe, dye);
+    if (distToElbow < macroR + 8) {
       leader.removeAttribute('data-visible');
       leader.hidden = true;
       return;
     }
-    const tx = mx + (dx / dist) * gap;
-    const ty = my + (dy / dist) * gap;
-    const lineLen = Math.hypot(ax - tx, ay - ty);
-    const angle = Math.atan2(ay - ty, ax - tx);
+    const startGap = macroR + 4;
+    const sx = mx + (dxe / distToElbow) * startGap;
+    const sy = my + (dye / distToElbow) * startGap;
+
+    const fmt = (n) => n.toFixed(1);
+    line.setAttribute(
+      'points',
+      `${fmt(sx)},${fmt(sy)} ${fmt(elbowX)},${fmt(elbowY)} ${fmt(anchorX)},${fmt(anchorY)}`
+    );
 
     leader.hidden = false;
-    leader.style.width = `${lineLen}px`;
-    leader.style.transform = `translate3d(${tx}px, ${ty}px, 0) rotate(${angle}rad)`;
     if (leader.getAttribute('data-visible') !== '1') {
       requestAnimationFrame(() => {
         if (!leader.hidden) leader.setAttribute('data-visible', '1');

@@ -47,6 +47,7 @@ ui.onMacroTrackToggle = (id, nextTracked) => {
 };
 ui.onCatalogEntryClick = (id) => {
   inspectorPinId = id;
+  inspectorPinSource = 'catalog';
 };
 
 // Visual targets:
@@ -135,6 +136,7 @@ let gestureDist = 0;
 // frame so moving macros are followed correctly. Pending pin holds a candidate
 // during the slop window before we commit to "tap" vs "drag".
 let inspectorPinId = null;
+let inspectorPinSource = null; // 'catalog' | 'viewport'
 let pendingPinId = null;
 let pendingPinStart = null; // { x, y, pointerId, t }
 const TAP_SLOP_PX = 10;     // CSS pixels of movement allowed before tap → drag
@@ -227,7 +229,7 @@ function pickMacroAtScreen(sx, sy, cssPad) {
   return sim.pickMacroAt(w.x, w.y, hitPadWorld(cssPad));
 }
 
-function macroInspectorData(m, pinned) {
+function macroInspectorData(m, pinned, source = null) {
   // Filament count: walk the renderer's live filaments map and count keys
   // whose endpoint ids exactly match this macro.
   let fil = 0;
@@ -262,7 +264,8 @@ function macroInspectorData(m, pinned) {
     screenX: screen.x,
     screenY: screen.y,
     macroRadiusCss,
-    pinned: !!pinned
+    pinned: !!pinned,
+    source: source || null,
   };
 }
 
@@ -275,6 +278,7 @@ function findMacroById(id) {
 function resolveInspector() {
   if (!inspectorAllowed()) {
     inspectorPinId = null;
+    inspectorPinSource = null;
     pendingPinId = null;
     ui.setMacroInspector(null);
     return;
@@ -283,8 +287,8 @@ function resolveInspector() {
   // Pinned wins. Drop pin if the macro is gone (merged or expired).
   if (inspectorPinId != null) {
     const m = findMacroById(inspectorPinId);
-    if (!m) { inspectorPinId = null; }
-    else { ui.setMacroInspector(macroInspectorData(m, true)); return; }
+    if (!m) { inspectorPinId = null; inspectorPinSource = null; }
+    else { ui.setMacroInspector(macroInspectorData(m, true, inspectorPinSource)); return; }
   }
 
   // While the player is spawning, hide hover to keep focus on the act.
@@ -531,7 +535,7 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 
   // Tapping empty space dismisses any existing pin.
-  if (inspectorPinId != null) inspectorPinId = null;
+  if (inspectorPinId != null) { inspectorPinId = null; inspectorPinSource = null; }
 
   holding = true;
   holdStartAt = performance.now();
@@ -641,6 +645,7 @@ function endHold(e) {
   // its origin, commit the pin. Otherwise it was already promoted to a hold.
   if (pendingPinId != null) {
     inspectorPinId = pendingPinId;
+    inspectorPinSource = 'viewport';
     pendingPinId = null;
     pendingPinStart = null;
   }
