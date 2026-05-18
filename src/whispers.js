@@ -40,11 +40,6 @@ export const WHISPERS = [
     test: (s) => s.maxParticleMass >= 28
   },
   {
-    id: 'first-macro',
-    message: 'Out of many, one. A new center holds the field.',
-    test: (s, sim) => sim.macros.length >= 1
-  },
-  {
     id: 'first-filament',
     message: 'Distant macros bend toward each other. The cosmic web takes shape.',
     test: (s, sim) => sim.macros.length >= 2 && s.eraIndex >= 4
