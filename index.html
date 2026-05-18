@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#000000" />
+  <!-- Encourage iOS Safari (especially in standalone PWA mode) to revalidate
+       rather than serve stale modules. Combined with GitHub Pages' ETag/
+       Last-Modified handling, new deploys land on the next launch. -->
+  <meta http-equiv="Cache-Control" content="no-cache" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Cosmogenesis</title>
   <meta name="description" content="A physics-driven incremental cosmic observatory. Tap the void. Watch the universe learn how to exist." />
 

@@ -418,9 +418,66 @@ export class UI {
       const { wrap } = this._buildSettingControl(s, state);
       this.elSettingsContent.appendChild(wrap);
     }
+    this._appendReloadAction();
     this._globalSettingsBuilt = true;
     // Apply the currently-stored cursor on first build.
     this._applyCursor(state.settings.cursorStyle);
+  }
+
+  // Safety net for PWA / iOS standalone where stale caches can persist
+  // across deploys. Tapping this clears any registered Cache Storage and
+  // service workers, then hard-reloads.
+  _appendReloadAction() {
+    if (!this.elSettingsContent) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'setting-row settings-reload-row';
+    wrap.style.cssText = 'margin-top: 14px; padding-top: 10px;' +
+      ' border-top: 1px solid rgba(184, 164, 255, 0.16);';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'settings-reload-btn';
+    btn.textContent = 'Reload Cosmogenesis';
+    btn.style.cssText =
+      'width: 100%; padding: 8px 10px; background: rgba(184, 164, 255, 0.08);' +
+      ' border: 1px solid rgba(184, 164, 255, 0.35); border-radius: 6px;' +
+      ' color: rgba(255, 255, 255, 0.88); font-family: inherit; font-size: 12px;' +
+      ' letter-spacing: 1.2px; text-transform: uppercase; cursor: pointer;' +
+      ' transition: background 0.12s ease, border-color 0.12s ease;';
+    btn.addEventListener('pointerenter', () => {
+      btn.style.background = 'rgba(184, 164, 255, 0.18)';
+      btn.style.borderColor = 'rgba(184, 164, 255, 0.7)';
+    });
+    btn.addEventListener('pointerleave', () => {
+      btn.style.background = 'rgba(184, 164, 255, 0.08)';
+      btn.style.borderColor = 'rgba(184, 164, 255, 0.35)';
+    });
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Reloading...';
+      try {
+        if (window.caches && caches.keys) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+        if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+      } catch (_) { /* best effort; still reload */ }
+      // Cache-buster query so iOS Safari fetches a fresh document, then
+      // immediately replace history so the URL stays clean afterward.
+      const u = new URL(window.location.href);
+      u.searchParams.set('_r', String(Date.now()));
+      window.location.replace(u.toString());
+    });
+    const hint = document.createElement('div');
+    hint.style.cssText =
+      'margin-top: 6px; font-size: 10px; letter-spacing: 0.4px;' +
+      ' color: rgba(255, 255, 255, 0.42); font-style: italic; text-align: center;';
+    hint.textContent = 'Forces a fresh load if a new version is available.';
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    this.elSettingsContent.appendChild(wrap);
   }
 
   _wireTooltips() {
