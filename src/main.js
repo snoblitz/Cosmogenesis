@@ -134,13 +134,25 @@ function clearLongPress() {
   longPressOrigin = null;
 }
 
+// Normalize pointer type so finger contacts on Windows touchscreens that
+// erroneously report pointerType='mouse' still get treated as touch. Per
+// the Pointer Events spec, real mouse events always report width=height=1;
+// finger contacts report a larger area. This catches Surface and other
+// devices whose driver/browser combo emulates mouse for finger input.
+function effectivePointerType(e) {
+  if (!e) return 'mouse';
+  const t = e.pointerType || 'mouse';
+  if (t === 'mouse' && ((e.width || 0) > 1 || (e.height || 0) > 1)) return 'touch';
+  return t;
+}
+
 function eventToScreen(e) {
   const rect = canvas.getBoundingClientRect();
   // Touch-only vertical offset: lifts the effective hit point above the
   // fingertip so the spawn isn't hidden under the user's finger. Mouse and
   // pen input are unaffected. Offset is in CSS pixels, scaled to canvas px.
   let cssY = e.clientY - rect.top;
-  if (e.pointerType === 'touch') {
+  if (effectivePointerType(e) === 'touch') {
     const off = (state && state.settings && typeof state.settings.touchOffsetPx === 'number')
       ? state.settings.touchOffsetPx : 0;
     if (off) cssY -= off;
@@ -291,7 +303,7 @@ canvas.addEventListener('pointerdown', (e) => {
   screenPos.x = x;
   screenPos.y = y;
   pointerInside = true;
-  lastPointerType = e.pointerType || 'mouse';
+  lastPointerType = effectivePointerType(e);
 
   // Touch (or pen) on a macro: tentative pin. We hold off spawning until the
   // pointer either lifts (confirming the tap), moves past the slop (drag), or
@@ -349,7 +361,7 @@ canvas.addEventListener('pointermove', (e) => {
   screenPos.x = x;
   screenPos.y = y;
   pointerInside = true;
-  if (e.pointerType) lastPointerType = e.pointerType;
+  if (e.pointerType) lastPointerType = effectivePointerType(e);
 
   // If we have a pending pin (touch/pen on a macro), watch for drag.
   if (pendingPinId != null && pendingPinStart) {
@@ -434,7 +446,7 @@ resetBtn.addEventListener('pointerdown', (e) => {
 
 canvas.addEventListener('pointerenter', (e) => {
   pointerInside = true;
-  if (e.pointerType) lastPointerType = e.pointerType;
+  if (e.pointerType) lastPointerType = effectivePointerType(e);
 });
 
 // --- Game loop ---
