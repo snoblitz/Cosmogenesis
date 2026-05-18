@@ -1087,6 +1087,33 @@ body {
   animation: armedPulse 1s ease-in-out infinite;
 }
 
+/* Recenter button: bottom-left mirror of reset-btn. Hidden via the
+   [hidden] attribute by default; main.js toggles it when the camera
+   override is active. */
+#recenter-btn {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(8, 8, 20, 0.5);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 20px;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  font-family: inherit;
+}
+#recenter-btn:hover {
+  color: #fff;
+  border-color: rgba(184, 164, 255, 0.5);
+  transform: scale(1.08);
+}
+#recenter-btn[hidden] { display: none; }
+
 /* Settings button: sits above the reset button, same circular chrome. */
 #settings-btn {
   position: absolute;
@@ -1405,6 +1432,11 @@ body {
   #reset-btn {
     bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     right: max(10px, env(safe-area-inset-right, 0px));
+    width: 38px; height: 38px;
+  }
+  #recenter-btn {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    left: max(10px, env(safe-area-inset-left, 0px));
     width: 38px; height: 38px;
   }
   #settings-btn {

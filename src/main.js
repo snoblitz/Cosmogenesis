@@ -75,7 +75,11 @@ function resize() {
   const worldW = canvas.width  / MIN_ZOOM;
   const worldH = canvas.height / MIN_ZOOM;
   sim.setBounds(worldW, worldH);
-  renderer.setCameraCenter(worldW / 2, worldH / 2);
+  // Don't snap the camera back to center while the player has it under
+  // manual control -- that would jerk their view on every resize.
+  if (!renderer.cameraOverride) {
+    renderer.setCameraCenter(worldW / 2, worldH / 2);
+  }
 }
 window.addEventListener('resize', resize);
 resize();
@@ -104,12 +108,28 @@ let _prevEraIndex = state.eraIndex;
 // Spawn rate ramps up the longer you hold, so charging feels intentional.
 // Tap on a macro (touch only) pins the inspector instead of spawning, with a
 // movement slop so accidental drags still paint as expected.
+//
+// Camera controls (layered on top of spawn): wheel zoom, middle-click or
+// space+drag pan, two-finger pinch/pan on touch, arrow keys + +/-/0 for
+// keyboard. Any manual camera input flips renderer.cameraOverride = true,
+// which disables era-zoom and Smart Tracking until the Recenter button
+// clears the flag.
 let holding = false;
 let holdStartAt = 0;
 let lastSpawnAt = 0;
 const screenPos = { x: 0, y: 0 };
 let pointerInside = false;
 let lastPointerType = 'mouse';
+
+// Camera-control state.
+let spaceHeld = false;
+let panActive = false;
+let panLastClient = null;
+let panPointerId = null;
+const activeTouches = new Map(); // pointerId -> { clientX, clientY }
+let gestureActive = false;
+let gestureMid = null;
+let gestureDist = 0;
 
 // Inspector tracking. Pin survives across frames; hover is re-resolved per
 // frame so moving macros are followed correctly. Pending pin holds a candidate
@@ -302,7 +322,161 @@ function touchPointerClient(e) {
   return { x: e.clientX, y: e.clientY - off };
 }
 
+// ---- Camera controls ----
+//
+// All manual camera changes route through these helpers so:
+//   1. The override flag is set consistently (suspends era zoom + Smart
+//      Tracking until the user clicks Recenter).
+//   2. World-bounds clamping happens in one place.
+//   3. Zoom limits scale with the current era's natural zoom, so the
+//      player can always pull back further than smart-tracking allows and
+//      zoom in for a closer look without losing context.
+
+const recenterBtn = document.getElementById('recenter-btn');
+
+function clampCameraToBounds() {
+  const z = renderer.targetZoom || 1;
+  const halfW = (canvas.width  / z) / 2;
+  const halfH = (canvas.height / z) / 2;
+  const W = sim.bounds.w, H = sim.bounds.h;
+  if (halfW * 2 < W) renderer.cam.x = Math.min(Math.max(renderer.cam.x, halfW), W - halfW);
+  else renderer.cam.x = W / 2;
+  if (halfH * 2 < H) renderer.cam.y = Math.min(Math.max(renderer.cam.y, halfH), H - halfH);
+  else renderer.cam.y = H / 2;
+}
+
+function activateCameraOverride() {
+  if (!renderer.cameraOverride) {
+    renderer.cameraOverride = true;
+    if (recenterBtn) recenterBtn.hidden = false;
+  }
+}
+
+function recenterCamera() {
+  renderer.cameraOverride = false;
+  if (recenterBtn) recenterBtn.hidden = true;
+  // Era zoom + Smart Tracking resume on the next frame automatically.
+}
+
+function userZoomAt(screenX, screenY, factor) {
+  if (!isFinite(factor) || factor <= 0) return;
+  const eraZ = ERAS[state.eraIndex]?.zoom ?? 1.0;
+  const minZ = eraZ * 0.25;  // pull back up to 4x further than era default
+  const maxZ = eraZ * 6.0;   // zoom in up to 6x closer
+  const cur = renderer.targetZoom;
+  const newZ = Math.max(minZ, Math.min(maxZ, cur * factor));
+  if (Math.abs(newZ - cur) < 1e-5) return;
+
+  // Anchored zoom: world point under (screenX, screenY) stays fixed.
+  // We snap renderer.zoom = newZ as well so the anchor is exact rather
+  // than drifting during the lerp -- feels right under a wheel.
+  const wBefore = renderer.screenToWorld(screenX, screenY);
+  renderer.targetZoom = newZ;
+  renderer.zoom = newZ;
+  const wAfter = renderer.screenToWorld(screenX, screenY);
+  renderer.cam.x += (wBefore.x - wAfter.x);
+  renderer.cam.y += (wBefore.y - wAfter.y);
+
+  activateCameraOverride();
+  clampCameraToBounds();
+}
+
+function userPanBy(dxInternal, dyInternal) {
+  const z = renderer.zoom || 1;
+  renderer.cam.x -= dxInternal / z;
+  renderer.cam.y -= dyInternal / z;
+  activateCameraOverride();
+  clampCameraToBounds();
+}
+
+// Convert CSS pixel delta to internal canvas pixel delta.
+function cssToInternal(dxCss, dyCss) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: dxCss * (canvas.width  / rect.width),
+    y: dyCss * (canvas.height / rect.height)
+  };
+}
+
+// Convert client (viewport) coords to internal canvas px.
+function clientToInternal(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) * (canvas.width  / rect.width),
+    y: (clientY - rect.top)  * (canvas.height / rect.height)
+  };
+}
+
+if (recenterBtn) {
+  recenterBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    recenterCamera();
+  });
+}
+
+// Wheel zoom (desktop / trackpad). Anchored at the cursor so the world
+// point under the mouse stays fixed -- standard map behavior.
+canvas.addEventListener('wheel', (e) => {
+  if (!inspectorAllowed()) return;
+  e.preventDefault();
+  const { x: sx, y: sy } = clientToInternal(e.clientX, e.clientY);
+  // deltaY positive = scroll down = zoom out. Exponential so trackpad
+  // continuous deltas feel smooth and wheel ticks feel meaningful.
+  const factor = Math.exp(-e.deltaY * 0.0015);
+  userZoomAt(sx, sy, factor);
+}, { passive: false });
+
+// Multi-touch pinch + two-finger pan. Started when activeTouches.size hits 2,
+// ended when it drops below 2. Cancels any in-progress spawn / pending pin.
+function gestureBegin() {
+  holding = false;
+  pendingPinId = null;
+  pendingPinStart = null;
+  clearLongPress();
+  if (ui && ui.hideTouchPointer) ui.hideTouchPointer();
+  const t = Array.from(activeTouches.values());
+  if (t.length < 2) return;
+  gestureMid = {
+    x: (t[0].clientX + t[1].clientX) / 2,
+    y: (t[0].clientY + t[1].clientY) / 2
+  };
+  gestureDist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY) || 1;
+  gestureActive = true;
+}
+
+function gestureUpdate() {
+  const t = Array.from(activeTouches.values());
+  if (t.length < 2) { gestureActive = false; return; }
+  const mx = (t[0].clientX + t[1].clientX) / 2;
+  const my = (t[0].clientY + t[1].clientY) / 2;
+  const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY) || 1;
+
+  // Pan by midpoint delta first, then zoom anchored at new midpoint.
+  const pan = cssToInternal(mx - gestureMid.x, my - gestureMid.y);
+  if (pan.x || pan.y) userPanBy(pan.x, pan.y);
+  const factor = dist / gestureDist;
+  if (Math.abs(factor - 1) > 1e-4) {
+    const anchor = clientToInternal(mx, my);
+    userZoomAt(anchor.x, anchor.y, factor);
+  }
+
+  gestureMid = { x: mx, y: my };
+  gestureDist = dist;
+}
+
 canvas.addEventListener('pointerdown', (e) => {
+  // Middle-click (any pointer) or space+left-click (mouse) → start pan.
+  // Intercepted before the spawn path so it doesn't paint particles.
+  const isMouse = e.pointerType === 'mouse';
+  if ((isMouse && e.button === 1) || (isMouse && e.button === 0 && spaceHeld)) {
+    e.preventDefault();
+    panActive = true;
+    panLastClient = { x: e.clientX, y: e.clientY };
+    panPointerId = e.pointerId;
+    canvas.setPointerCapture(e.pointerId);
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
   // Only the left mouse button spawns/pins; right-click is handled by the
   // contextmenu listener below.
   if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -312,6 +486,16 @@ canvas.addEventListener('pointerdown', (e) => {
   screenPos.y = y;
   pointerInside = true;
   lastPointerType = effectivePointerType(e);
+
+  // Track touches for pinch/pan detection. As soon as a second finger
+  // lands, enter gesture mode and short-circuit the spawn path.
+  if (lastPointerType === 'touch') {
+    activeTouches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+    if (activeTouches.size >= 2) {
+      gestureBegin();
+      return;
+    }
+  }
 
   if (lastPointerType === 'touch') {
     const p = touchPointerClient(e);
@@ -374,6 +558,28 @@ canvas.addEventListener('contextmenu', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  // Active pan (middle-click or space+drag): consume the event.
+  if (panActive && e.pointerId === panPointerId) {
+    const dxCss = e.clientX - panLastClient.x;
+    const dyCss = e.clientY - panLastClient.y;
+    panLastClient = { x: e.clientX, y: e.clientY };
+    const d = cssToInternal(dxCss, dyCss);
+    userPanBy(d.x, d.y);
+    return;
+  }
+
+  // Active multi-touch gesture: update midpoint + distance.
+  if (gestureActive && activeTouches.has(e.pointerId)) {
+    activeTouches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+    gestureUpdate();
+    return;
+  }
+  // Even when not yet in gesture mode, keep the touch position fresh in case
+  // we transition.
+  if (activeTouches.has(e.pointerId)) {
+    activeTouches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+  }
+
   const { x, y } = eventToScreen(e);
   screenPos.x = x;
   screenPos.y = y;
@@ -408,6 +614,29 @@ canvas.addEventListener('pointermove', (e) => {
 });
 
 function endHold(e) {
+  // End active pan first.
+  if (panActive && (!e || e.pointerId === panPointerId)) {
+    panActive = false;
+    panPointerId = null;
+    panLastClient = null;
+    canvas.style.cursor = spaceHeld ? 'grab' : '';
+    if (e && e.pointerId !== undefined && canvas.hasPointerCapture?.(e.pointerId)) {
+      canvas.releasePointerCapture(e.pointerId);
+    }
+    return;
+  }
+  // End multi-touch gesture as fingers lift.
+  if (e && e.pointerId !== undefined && activeTouches.has(e.pointerId)) {
+    activeTouches.delete(e.pointerId);
+    if (gestureActive && activeTouches.size < 2) {
+      gestureActive = false;
+      gestureMid = null;
+      gestureDist = 0;
+      // Don't reactivate spawn from the lingering finger -- the user is
+      // clearly using the camera, not painting. They can lift and re-tap.
+      return;
+    }
+  }
   // Resolve any pending pin first. If the pointer lifted while still close to
   // its origin, commit the pin. Otherwise it was already promoted to a hold.
   if (pendingPinId != null) {
@@ -473,6 +702,46 @@ canvas.addEventListener('pointerenter', (e) => {
   if (e.pointerType) lastPointerType = effectivePointerType(e);
 });
 
+// --- Keyboard camera controls ---
+// Space + drag → pan (handled in pointerdown via spaceHeld flag).
+// Arrow keys → pan. + / - / 0 → zoom in / out / reset. Ignored while the
+// user is typing into an input/textarea so we don't fight renaming.
+function isTypingInInput() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && !spaceHeld && !isTypingInInput()) {
+    spaceHeld = true;
+    if (!panActive) canvas.style.cursor = 'grab';
+    e.preventDefault();
+    return;
+  }
+  if (isTypingInInput()) return;
+  if (!inspectorAllowed()) return;
+  const PAN_STEP = canvas.width * 0.06; // ~6% of viewport per press
+  if (e.code === 'ArrowLeft')  { userPanBy(-PAN_STEP, 0); e.preventDefault(); return; }
+  if (e.code === 'ArrowRight') { userPanBy( PAN_STEP, 0); e.preventDefault(); return; }
+  if (e.code === 'ArrowUp')    { userPanBy(0, -PAN_STEP); e.preventDefault(); return; }
+  if (e.code === 'ArrowDown')  { userPanBy(0,  PAN_STEP); e.preventDefault(); return; }
+  if (e.key === '+' || e.key === '=') {
+    userZoomAt(canvas.width / 2, canvas.height / 2, 1.18); e.preventDefault(); return;
+  }
+  if (e.key === '-' || e.key === '_') {
+    userZoomAt(canvas.width / 2, canvas.height / 2, 1 / 1.18); e.preventDefault(); return;
+  }
+  if (e.key === '0') { recenterCamera(); e.preventDefault(); return; }
+});
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'Space') {
+    spaceHeld = false;
+    if (!panActive) canvas.style.cursor = '';
+  }
+});
+
 // --- Game loop ---
 let last = performance.now();
 
@@ -490,6 +759,7 @@ let last = performance.now();
 const SMART_TRACK_TAU_S = 1.4;
 const SMART_TRACK_MIN_ZOOM_FRAC = 0.5; // never zoom below half era zoom
 function updateSmartTracking(dt) {
+  if (renderer.cameraOverride) return;
   if (!state.settings || !state.settings.smartTracking) return;
   const macros = sim.macros;
   if (!macros || macros.length === 0) return;
@@ -560,8 +830,12 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 1 / 30);
   last = now;
 
-  // Keep renderer zoom + thermal in sync with current state
-  renderer.setTargetZoom(ERAS[state.eraIndex]?.zoom ?? 1.0);
+  // Keep renderer zoom + thermal in sync with current state. Skip the era
+  // zoom write while the player is driving the camera manually -- their
+  // pan/zoom would otherwise be overwritten every frame.
+  if (!renderer.cameraOverride) {
+    renderer.setTargetZoom(ERAS[state.eraIndex]?.zoom ?? 1.0);
+  }
   renderer.setTargetThermalAlpha(computeThermalTarget());
 
   // Edge-trigger the thermal scan reveal exactly once per universe.

@@ -46,6 +46,10 @@ export class Renderer {
     // Camera center in world coords, set by main.js after world bounds are known.
     this.cam = { x: 0, y: 0 };
 
+    // When true, era zoom and Smart Tracking stop writing to the camera, so
+    // manual pan/zoom controls take over. Cleared by the Recenter button.
+    this.cameraOverride = false;
+
     // Thermal lens intensity (0 = visible spectrum / clean, 1 = full thermal).
     // The thermal effect is rendered as a screen-space overlay applied
     // spatially via `scanProgress` (during reveal) or globally (after reveal).
