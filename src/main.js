@@ -476,34 +476,75 @@ canvas.addEventListener('pointerenter', (e) => {
 // --- Game loop ---
 let last = performance.now();
 
-// Smart Tracking: when enabled, exponentially lerp the camera center toward
-// the mass-weighted centroid of all macros so structures and cradles stay on
-// screen as they drift. Time constant ~1.4s -- slow enough that the motion
-// reads as the universe settling rather than the camera chasing. Bounded by
-// the world so we never pan into pure void.
+// Smart Tracking: when enabled, frame the camera so all macros stay on
+// screen. Two ingredients:
+//   * Aim point = blend of (sqrt(mass)-weighted centroid) and (bbox center),
+//     so a huge cradle nudges the frame toward itself but doesn't dominate
+//     to the point of pushing smaller macros off screen.
+//   * Zoom = era zoom by default, but zoomed out enough to fit every
+//     macro's halo inside the viewport. Capped at half era zoom so the
+//     universe never shrinks to a dot.
+// Time constant ~1.4s -- slow enough that the motion reads as the
+// universe settling rather than the camera chasing. Bounded by the world
+// so we never pan into pure void.
 const SMART_TRACK_TAU_S = 1.4;
+const SMART_TRACK_MIN_ZOOM_FRAC = 0.5; // never zoom below half era zoom
 function updateSmartTracking(dt) {
   if (!state.settings || !state.settings.smartTracking) return;
   const macros = sim.macros;
   if (!macros || macros.length === 0) return;
 
-  let totalM = 0, sx = 0, sy = 0;
+  const dpr = renderer.dpr || 1;
+  let totalW = 0, sx = 0, sy = 0;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const m of macros) {
     const mass = Math.max(m.mass || 1, 1);
-    sx += m.x * mass;
-    sy += m.y * mass;
-    totalM += mass;
+    // Sub-linear influence so a 10,000-mass cradle isn't 10,000× the pull
+    // of a fresh macro -- it's only ~100× -- and still leaves room for
+    // smaller bodies in the frame.
+    const w = Math.sqrt(mass);
+    sx += m.x * w;
+    sy += m.y * w;
+    totalW += w;
+    // Expand bbox by the macro's visible halo, not just its center, so
+    // big bodies don't get cropped at the edges of frame.
+    const ext = (m.r || 4) * dpr * 7;
+    if (m.x - ext < minX) minX = m.x - ext;
+    if (m.x + ext > maxX) maxX = m.x + ext;
+    if (m.y - ext < minY) minY = m.y - ext;
+    if (m.y + ext > maxY) maxY = m.y + ext;
   }
-  if (totalM <= 0) return;
+  if (totalW <= 0) return;
 
-  let tx = sx / totalM;
-  let ty = sy / totalM;
+  const wcx = sx / totalW;
+  const wcy = sy / totalW;
+  const bcx = (minX + maxX) / 2;
+  const bcy = (minY + maxY) / 2;
+  // 50/50 blend: weighted centroid gives the eye a focal point near mass,
+  // bbox center prevents that focal point from kicking smaller bodies out.
+  let tx = (wcx + bcx) * 0.5;
+  let ty = (wcy + bcy) * 0.5;
 
-  // Keep at least half the viewport inside the world bounds so we never
-  // expose the void edge while tracking.
-  const z = renderer.zoom || 1;
-  const halfW = (canvas.width  / z) / 2;
-  const halfH = (canvas.height / z) / 2;
+  // Required half-extent to fit every macro (with halo) around the aim
+  // point. Add a little breathing room so things aren't pinned to edges.
+  const pad = 40;
+  const reqHalfW = Math.max(maxX - tx, tx - minX) + pad;
+  const reqHalfH = Math.max(maxY - ty, ty - minY) + pad;
+
+  // Era zoom is the cap: smart tracking only ever zooms OUT from it.
+  const eraZ = renderer.targetZoom;
+  const fitZ = Math.min(
+    canvas.width  / (2 * Math.max(1, reqHalfW)),
+    canvas.height / (2 * Math.max(1, reqHalfH))
+  );
+  const smartZ = Math.max(eraZ * SMART_TRACK_MIN_ZOOM_FRAC, Math.min(eraZ, fitZ));
+  renderer.targetZoom = smartZ;
+
+  // Clamp aim so the viewport stays inside the world bounds. Use the
+  // smart target zoom (the framing we're heading for) rather than the
+  // lerped current zoom, so the clamp predicts the final view.
+  const halfW = (canvas.width  / smartZ) / 2;
+  const halfH = (canvas.height / smartZ) / 2;
   const W = sim.bounds.w, H = sim.bounds.h;
   if (halfW * 2 < W) tx = Math.min(Math.max(tx, halfW), W - halfW);
   else tx = W / 2;
