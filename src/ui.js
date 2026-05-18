@@ -1086,40 +1086,62 @@ export class UI {
   }
 
   // ---- Long-press indicator ----------------------------------------------
-  // A small ring that fades in at the predicted top-left of the context menu
-  // during the latter portion of a long-press hold, telling the user their
-  // hold has been registered just before the menu reveals.
+  // A subtle progress ring anchored at the touch point. Fills smoothly over
+  // the remainder of the hold so the player sees their press being registered
+  // exactly where their finger is.
   _ensureLongPressIndicatorEl() {
     if (this._longPressEl) return this._longPressEl;
+    const size = 44;
+    const r = 18;
+    const C = 2 * Math.PI * r;
     const el = document.createElement('div');
     el.id = 'long-press-indicator';
     el.setAttribute('aria-hidden', 'true');
     el.style.cssText =
       'position: fixed; pointer-events: none; z-index: 9100;' +
-      ' width: 14px; height: 14px; border-radius: 50%;' +
-      ' background: radial-gradient(circle at 35% 35%, #fff 0%, #ffd98a 40%, #b48bff 85%, transparent 100%);' +
-      ' box-shadow: 0 0 12px rgba(255, 210, 140, 0.6), 0 0 22px rgba(180, 140, 255, 0.35);' +
-      ' opacity: 0; transform: translate3d(-9999px, -9999px, 0) scale(0.3);' +
-      ' transition: opacity 180ms ease, transform 220ms cubic-bezier(0.22, 1.4, 0.36, 1);' +
+      ` width: ${size}px; height: ${size}px;` +
+      ' opacity: 0; transform: translate3d(-9999px, -9999px, 0) scale(0.85);' +
+      ' transition: opacity 160ms ease, transform 200ms cubic-bezier(0.22, 1.4, 0.36, 1);' +
       ' will-change: transform, opacity;';
+    el.innerHTML =
+      `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block;overflow:visible">` +
+        `<circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none"` +
+          ` stroke="rgba(180,140,255,0.18)" stroke-width="2.5"/>` +
+        `<circle class="lpi-progress" cx="${size/2}" cy="${size/2}" r="${r}" fill="none"` +
+          ` stroke="#b48bff" stroke-width="2.5" stroke-linecap="round"` +
+          ` stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="${C.toFixed(2)}"` +
+          ` transform="rotate(-90 ${size/2} ${size/2})"` +
+          ` style="filter: drop-shadow(0 0 4px rgba(180,140,255,0.55));"/>` +
+      `</svg>`;
     document.body.appendChild(el);
     this._longPressEl = el;
+    this._longPressCircumference = C;
     return el;
   }
 
-  showLongPressIndicator(clientX, clientY) {
+  showLongPressIndicator(clientX, clientY, durationMs = 400) {
     const el = this._ensureLongPressIndicatorEl();
-    const anchor = this._predictContextMenuTopLeft(clientX, clientY);
-    // Position the indicator AT the predicted top-left corner of the menu.
-    // It's a 14px dot, centered on that corner.
-    el.style.transform = `translate3d(${anchor.x - 7}px, ${anchor.y - 7}px, 0) scale(1)`;
+    const size = 44;
+    // Center on the touch point.
+    el.style.transform = `translate3d(${clientX - size/2}px, ${clientY - size/2}px, 0) scale(1)`;
     el.style.opacity = '1';
+    const prog = el.querySelector('.lpi-progress');
+    if (prog) {
+      const C = this._longPressCircumference;
+      // Reset to empty (no transition), then animate to full.
+      prog.style.transition = 'none';
+      prog.style.strokeDashoffset = String(C);
+      // Force reflow so the next change animates.
+      void prog.getBoundingClientRect();
+      prog.style.transition = `stroke-dashoffset ${durationMs}ms linear`;
+      prog.style.strokeDashoffset = '0';
+    }
   }
 
   hideLongPressIndicator() {
     if (!this._longPressEl) return;
     this._longPressEl.style.opacity = '0';
-    // Keep current position so it fades out in place.
+    this._longPressEl.style.transform = this._longPressEl.style.transform.replace(/scale\([^)]*\)/, 'scale(0.85)');
   }
 
   _enterRenameMode() {

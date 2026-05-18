@@ -335,14 +335,19 @@ canvas.addEventListener('pointerdown', (e) => {
       // Schedule long-press: if the user holds still, open the context menu.
       longPressMacroId = m.id;
       longPressOrigin = { clientX: e.clientX, clientY: e.clientY };
-      // Pre-indicator fades in at ~60% of the threshold, anchored where the
-      // menu will appear. Gives the player confidence their hold is registered.
-      const INDICATOR_LEAD_RATIO = 0.6;
+      // Show the progress ring early enough that the player sees their hold
+      // being registered, and fills it across the remaining time so the ring
+      // completes exactly as the menu opens.
+      const INDICATOR_DELAY_MS = 140;
       longPressIndicatorTimer = setTimeout(() => {
         if (ui && ui.showLongPressIndicator) {
-          ui.showLongPressIndicator(longPressOrigin.clientX, longPressOrigin.clientY);
+          ui.showLongPressIndicator(
+            longPressOrigin.clientX,
+            longPressOrigin.clientY,
+            LONG_PRESS_MS - INDICATOR_DELAY_MS
+          );
         }
-      }, Math.round(LONG_PRESS_MS * INDICATOR_LEAD_RATIO));
+      }, INDICATOR_DELAY_MS);
       longPressTimer = setTimeout(() => {
         // Re-validate: macro might have moved or merged; refetch by id.
         const mNow = findMacroById(longPressMacroId);
