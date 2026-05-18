@@ -124,18 +124,14 @@ const LONG_PRESS_MS = 550;  // touch/pen hold-to-open-context-menu threshold
 // Long-press timer. When a touch starts on a macro and stays still for
 // LONG_PRESS_MS, fire the context menu and cancel the pending pin.
 let longPressTimer = null;
-let longPressIndicatorTimer = null;
 let longPressMacroId = null;
 let longPressOrigin = null; // { clientX, clientY }
 
 function clearLongPress() {
   if (longPressTimer) clearTimeout(longPressTimer);
-  if (longPressIndicatorTimer) clearTimeout(longPressIndicatorTimer);
   longPressTimer = null;
-  longPressIndicatorTimer = null;
   longPressMacroId = null;
   longPressOrigin = null;
-  if (ui && ui.hideLongPressIndicator) ui.hideLongPressIndicator();
 }
 
 // Normalize pointer type so finger contacts on Windows touchscreens that
@@ -335,19 +331,6 @@ canvas.addEventListener('pointerdown', (e) => {
       // Schedule long-press: if the user holds still, open the context menu.
       longPressMacroId = m.id;
       longPressOrigin = { clientX: e.clientX, clientY: e.clientY };
-      // Show the progress ring early enough that the player sees their hold
-      // being registered, and fills it across the remaining time so the ring
-      // completes exactly as the menu opens.
-      const INDICATOR_DELAY_MS = 140;
-      longPressIndicatorTimer = setTimeout(() => {
-        if (ui && ui.showLongPressIndicator) {
-          ui.showLongPressIndicator(
-            longPressOrigin.clientX,
-            longPressOrigin.clientY,
-            LONG_PRESS_MS - INDICATOR_DELAY_MS
-          );
-        }
-      }, INDICATOR_DELAY_MS);
       longPressTimer = setTimeout(() => {
         // Re-validate: macro might have moved or merged; refetch by id.
         const mNow = findMacroById(longPressMacroId);

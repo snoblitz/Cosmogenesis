@@ -984,9 +984,17 @@ export class UI {
     this._contextMenuLastX = opts.screenX;
     this._contextMenuLastY = opts.screenY;
     this._contextMenuAnchorMode = opts.anchorMode || 'corner';
+    // Touch path animates from the touch point; desktop right-click keeps its
+    // existing top-left animation untouched.
+    if (this._contextMenuAnchorMode === 'right') {
+      menu.style.transition =
+        'opacity 200ms cubic-bezier(0.22, 1.4, 0.36, 1),' +
+        ' transform 220ms cubic-bezier(0.22, 1.4, 0.36, 1)';
+    } else {
+      menu.style.transition = '';
+      menu.style.transformOrigin = '';
+    }
     this._positionContextMenu(opts.screenX, opts.screenY);
-    // Hide the long-press indicator now that the real menu is appearing.
-    this.hideLongPressIndicator();
     requestAnimationFrame(() => {
       if (!menu.hidden) {
         menu.setAttribute('data-visible', '1');
@@ -1024,6 +1032,7 @@ export class UI {
     const pad = 8;
     const mode = this._contextMenuAnchorMode || 'corner';
     let x, y;
+    let flippedLeft = false;
     if (mode === 'right') {
       // Touch-friendly: place to the right of the finger, vertically centered,
       // so the menu isn't hidden under the user's hand. Flip to the left if
@@ -1031,7 +1040,7 @@ export class UI {
       const gap = 22;
       x = sx + gap;
       y = sy - h / 2;
-      if (x + w > vw - pad) x = sx - gap - w;
+      if (x + w > vw - pad) { x = sx - gap - w; flippedLeft = true; }
     } else {
       x = sx;
       y = sy;
@@ -1040,108 +1049,21 @@ export class UI {
     if (x < pad) x = pad;
     if (y + h > vh - pad) y = vh - pad - h;
     if (y < pad) y = pad;
+    // Anchor the entrance animation: in touch mode the menu grows out of the
+    // edge nearest the finger so the reveal reads as a direct response to the
+    // press; in corner mode we keep the original top-left origin.
+    if (mode === 'right') {
+      const originY = Math.max(0, Math.min(h, sy - y));
+      menu.style.transformOrigin = `${flippedLeft ? '100%' : '0%'} ${originY}px`;
+    } else {
+      menu.style.transformOrigin = 'top left';
+    }
     // Preserve the open-scale transform so the entrance animation reads.
     const visible = menu.getAttribute('data-visible') === '1';
-    const scale = visible ? 1 : 0.96;
+    const startScale = mode === 'right' ? 0.82 : 0.96;
+    const scale = visible ? 1 : startScale;
     menu.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0) scale(${scale})`;
-    // Remember resolved anchor (top-left of the open menu) for indicators.
     this._contextMenuAnchorResolved = { x: Math.round(x), y: Math.round(y) };
-  }
-
-  // Predict where the right-anchor menu's top-left will appear, BEFORE the
-  // real menu is shown. Uses fallback dimensions if no measurement yet.
-  _predictContextMenuTopLeft(sx, sy) {
-    const menu = this.elContextMenu;
-    let w = 220, h = 120;
-    if (menu) {
-      const wasHidden = menu.hidden;
-      if (wasHidden) {
-        // Briefly un-hide off-screen to measure. Avoids a flash by keeping
-        // opacity 0 (data-visible not set).
-        menu.style.visibility = 'hidden';
-        menu.hidden = false;
-        const r = menu.getBoundingClientRect();
-        if (r.width > 0) w = r.width;
-        if (r.height > 0) h = r.height;
-        menu.hidden = true;
-        menu.style.visibility = '';
-      } else {
-        const r = menu.getBoundingClientRect();
-        if (r.width > 0) w = r.width;
-        if (r.height > 0) h = r.height;
-      }
-    }
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const pad = 8;
-    const gap = 22;
-    let x = sx + gap;
-    let y = sy - h / 2;
-    if (x + w > vw - pad) x = sx - gap - w;
-    if (x + w > vw - pad) x = vw - pad - w;
-    if (x < pad) x = pad;
-    if (y + h > vh - pad) y = vh - pad - h;
-    if (y < pad) y = pad;
-    return { x: Math.round(x), y: Math.round(y) };
-  }
-
-  // ---- Long-press indicator ----------------------------------------------
-  // A subtle progress ring anchored at the touch point. Fills smoothly over
-  // the remainder of the hold so the player sees their press being registered
-  // exactly where their finger is.
-  _ensureLongPressIndicatorEl() {
-    if (this._longPressEl) return this._longPressEl;
-    const size = 44;
-    const r = 18;
-    const C = 2 * Math.PI * r;
-    const el = document.createElement('div');
-    el.id = 'long-press-indicator';
-    el.setAttribute('aria-hidden', 'true');
-    el.style.cssText =
-      'position: fixed; pointer-events: none; z-index: 9100;' +
-      ` width: ${size}px; height: ${size}px;` +
-      ' opacity: 0; transform: translate3d(-9999px, -9999px, 0) scale(0.85);' +
-      ' transition: opacity 160ms ease, transform 200ms cubic-bezier(0.22, 1.4, 0.36, 1);' +
-      ' will-change: transform, opacity;';
-    el.innerHTML =
-      `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block;overflow:visible">` +
-        `<circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none"` +
-          ` stroke="rgba(180,140,255,0.18)" stroke-width="2.5"/>` +
-        `<circle class="lpi-progress" cx="${size/2}" cy="${size/2}" r="${r}" fill="none"` +
-          ` stroke="#b48bff" stroke-width="2.5" stroke-linecap="round"` +
-          ` stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="${C.toFixed(2)}"` +
-          ` transform="rotate(-90 ${size/2} ${size/2})"` +
-          ` style="filter: drop-shadow(0 0 4px rgba(180,140,255,0.55));"/>` +
-      `</svg>`;
-    document.body.appendChild(el);
-    this._longPressEl = el;
-    this._longPressCircumference = C;
-    return el;
-  }
-
-  showLongPressIndicator(clientX, clientY, durationMs = 400) {
-    const el = this._ensureLongPressIndicatorEl();
-    const size = 44;
-    // Center on the touch point.
-    el.style.transform = `translate3d(${clientX - size/2}px, ${clientY - size/2}px, 0) scale(1)`;
-    el.style.opacity = '1';
-    const prog = el.querySelector('.lpi-progress');
-    if (prog) {
-      const C = this._longPressCircumference;
-      // Reset to empty (no transition), then animate to full.
-      prog.style.transition = 'none';
-      prog.style.strokeDashoffset = String(C);
-      // Force reflow so the next change animates.
-      void prog.getBoundingClientRect();
-      prog.style.transition = `stroke-dashoffset ${durationMs}ms linear`;
-      prog.style.strokeDashoffset = '0';
-    }
-  }
-
-  hideLongPressIndicator() {
-    if (!this._longPressEl) return;
-    this._longPressEl.style.opacity = '0';
-    this._longPressEl.style.transform = this._longPressEl.style.transform.replace(/scale\([^)]*\)/, 'scale(0.85)');
   }
 
   _enterRenameMode() {
