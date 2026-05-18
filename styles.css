@@ -629,12 +629,12 @@ body {
 }
 #inspector-leader polyline {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.78);
+  stroke: rgba(184, 164, 255, 0.78);
   stroke-width: 1;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.4))
-          drop-shadow(0 0 8px rgba(184, 164, 255, 0.22));
+  filter: drop-shadow(0 0 3px rgba(184, 164, 255, 0.45))
+          drop-shadow(0 0 8px rgba(184, 164, 255, 0.25));
 }
 #macro-inspector .mi-kind {
   display: block;

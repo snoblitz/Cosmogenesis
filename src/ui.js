@@ -1060,16 +1060,26 @@ export class UI {
 
     const left = panelX, right = panelX + w;
     const top = panelY, bottom = panelY + h;
-    const midY = top + h / 2;
     const mx = data.screenX, my = data.screenY;
     const macroR = data.macroRadiusCss || 12;
 
     // Enter the panel horizontally on whichever side is closer to the macro.
-    // Anchor = midpoint of that vertical edge so the entry feels balanced
-    // against the panel content.
+    // Pick a top- or bottom-corner entry (not the mid-edge) so the angled
+    // segment is always visibly slanted — entering at the vertical midpoint
+    // would produce a flat horizontal line whenever the panel sits beside the
+    // macro at the same height.
     const enterRight = mx < (left + right) / 2;
     const anchorX = enterRight ? left : right;
-    const anchorY = midY;
+    const cornerOffset = 24;
+    let anchorY;
+    if (my <= top + cornerOffset + 2) {
+      // Macro is at or above the panel — enter near the bottom corner so the
+      // angled run still slopes down from the body.
+      anchorY = bottom - cornerOffset;
+    } else {
+      // Default: enter near the top corner; line angles up from the macro.
+      anchorY = top + cornerOffset;
+    }
 
     // Horizontal segment: a short run into the panel. Length scales with the
     // horizontal gap so close panels don't get a huge stub.
