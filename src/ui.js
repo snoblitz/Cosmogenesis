@@ -1023,10 +1023,11 @@ export class UI {
   _positionContextMenu(sx, sy) {
     const menu = this.elContextMenu;
     if (!menu) return;
-    // Measure now that content/mode is set.
-    const rect = menu.getBoundingClientRect();
-    const w = rect.width;
-    const h = rect.height;
+    // Use offsetWidth/Height (layout box) instead of getBoundingClientRect
+    // (visual box), so our position math doesn't drift with the entrance
+    // scale transform.
+    const w = menu.offsetWidth;
+    const h = menu.offsetHeight;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const pad = 8;
