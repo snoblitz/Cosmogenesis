@@ -138,6 +138,69 @@ body {
   color: rgba(210, 215, 225, 0.75);
 }
 
+.instruments-tools {
+  border-top: 1px solid rgba(184, 164, 255, 0.15);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+.instruments-tools-header {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 6px;
+}
+.instruments-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: 1px solid rgba(159, 184, 255, 0.24);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: rgba(190, 210, 240, 0.88);
+  cursor: pointer;
+  font: inherit;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.instruments-tool:hover:not([disabled]):not([aria-pressed="true"]),
+.instruments-tool:focus-visible:not([disabled]):not([aria-pressed="true"]) {
+  background: rgba(184, 164, 255, 0.08);
+  border-color: rgba(184, 164, 255, 0.4);
+  color: rgba(220, 235, 255, 1);
+  outline: none;
+}
+.instruments-tool[aria-pressed="true"] {
+  background: rgba(184, 164, 255, 0.15);
+  border-color: rgba(184, 164, 255, 0.5);
+  color: rgba(230, 240, 255, 1);
+}
+.instruments-tool[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.tool-glyph {
+  font-size: 1.1em;
+  flex-shrink: 0;
+}
+.tool-label {
+  flex: 1;
+  text-align: left;
+}
+.tool-cost {
+  margin-left: auto;
+  opacity: 0.6;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+.instruments-tools-readout {
+  font-size: 0.8em;
+  opacity: 0.65;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Instrument themed icon (speaker/eye). Click to quick-toggle. */
 .instrument-icon {
   width: 18px;
@@ -785,16 +848,6 @@ body {
 }
 #macro-context-menu[data-kind="cradle"][data-tracked="1"] .mcm-item[data-action="track"] .mcm-glyph {
   color: #ffd49b;
-}
-#macro-context-menu .mcm-emitter-cost {
-  margin-left: auto;
-  opacity: 0.6;
-  font-size: 0.85em;
-  font-variant-numeric: tabular-nums;
-}
-#macro-context-menu .mcm-item[data-action="emitter-deploy"][aria-disabled="true"] {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 #macro-context-menu .mcm-item[data-action="emitter-remove"] {
   opacity: 0.75;

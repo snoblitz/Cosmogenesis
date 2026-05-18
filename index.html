@@ -84,6 +84,15 @@
       <div id="hud-instruments" class="panel">
         <div class="unlocks-title">Instruments</div>
         <ul id="instruments-list"></ul>
+        <div class="instruments-tools" hidden>
+          <div class="instruments-tools-header">Tools</div>
+          <button type="button" id="emitter-deploy-btn" class="instruments-tool" aria-pressed="false">
+            <span class="tool-glyph">◉</span>
+            <span class="tool-label">Deploy Emitter</span>
+            <span class="tool-cost" id="emitter-deploy-cost"></span>
+          </button>
+          <div class="instruments-tools-readout" id="emitter-readout"></div>
+        </div>
       </div>
     </div>
 
@@ -150,22 +159,17 @@
         <span class="mcm-title">Structure</span>
       </div>
       <div class="mcm-actions">
-        <button type="button" class="mcm-item" data-action="rename" role="menuitem">
+        <button type="button" class="mcm-item" data-action="rename" data-target="macro" role="menuitem">
           <span class="mcm-glyph">✎</span><span>Rename</span>
         </button>
-        <button type="button" class="mcm-item" data-action="track" role="menuitem">
+        <button type="button" class="mcm-item" data-action="track" data-target="macro" role="menuitem">
           <span class="mcm-glyph">☆</span><span class="mcm-track-label">Track</span>
         </button>
-        <button type="button" class="mcm-item mcm-emitter-deploy" data-action="emitter-deploy" role="menuitem" hidden>
-          <span class="mcm-glyph">◉</span>
-          <span class="mcm-emitter-label">Deploy Emitter</span>
-          <span class="mcm-emitter-cost"></span>
-        </button>
-        <button type="button" class="mcm-item mcm-emitter-toggle" data-action="emitter-toggle" role="menuitem" hidden>
+        <button type="button" class="mcm-item" data-action="emitter-toggle" data-target="emitter" role="menuitem" hidden>
           <span class="mcm-glyph mcm-emitter-toggle-glyph">⏸</span>
           <span class="mcm-emitter-toggle-label">Pause Emitter</span>
         </button>
-        <button type="button" class="mcm-item mcm-emitter-remove" data-action="emitter-remove" role="menuitem" hidden>
+        <button type="button" class="mcm-item" data-action="emitter-remove" data-target="emitter" role="menuitem" hidden>
           <span class="mcm-glyph">✕</span>
           <span>Remove Emitter</span>
         </button>

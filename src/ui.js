@@ -259,6 +259,10 @@ export class UI {
     this.elUnlocksPanel = document.getElementById('hud-unlocks');
     this.elInstruments = document.getElementById('instruments-list');
     this.elInstrumentsPanel = document.getElementById('hud-instruments');
+    this.elInstrumentsTools = document.querySelector('.instruments-tools');
+    this.elEmitterDeployBtn = document.getElementById('emitter-deploy-btn');
+    this.elEmitterDeployCost = document.getElementById('emitter-deploy-cost');
+    this.elEmitterReadout = document.getElementById('emitter-readout');
     this.elBanner     = document.getElementById('discovery-banner');
     this.elWhisper    = document.getElementById('whisper');
     this.elTooltip    = document.getElementById('info-tooltip');
@@ -293,24 +297,27 @@ export class UI {
     this.elContextMenuInput  = this.elContextMenu?.querySelector('.mcm-input') || null;
     this.elContextMenuTrackLabel = this.elContextMenu?.querySelector('.mcm-track-label') || null;
     this.elContextMenuTrackGlyph = this.elContextMenu?.querySelector('.mcm-item[data-action="track"] .mcm-glyph') || null;
-    this.elContextMenuEmitterDeploy = this.elContextMenu?.querySelector('.mcm-item[data-action="emitter-deploy"]') || null;
-    this.elContextMenuEmitterDeployCost = this.elContextMenu?.querySelector('.mcm-emitter-cost') || null;
     this.elContextMenuEmitterToggle = this.elContextMenu?.querySelector('.mcm-item[data-action="emitter-toggle"]') || null;
     this.elContextMenuEmitterToggleLabel = this.elContextMenu?.querySelector('.mcm-emitter-toggle-label') || null;
     this.elContextMenuEmitterToggleGlyph = this.elContextMenu?.querySelector('.mcm-emitter-toggle-glyph') || null;
     this.elContextMenuEmitterRemove = this.elContextMenu?.querySelector('.mcm-item[data-action="emitter-remove"]') || null;
+    this._contextMenuItems = Array.from(this.elContextMenu?.querySelectorAll('.mcm-item') || []);
     this._contextMenuOpen = false;
+    this._contextMenuTargetType = 'macro';
     this._contextMenuMacroId = null;
+    this._contextMenuEmitterId = null;
     this._contextMenuMode = 'actions'; // 'actions' | 'rename'
 
     // External callbacks set by main.js so the input layer can react.
     this.onMacroRename       = null;  // (macroId, newName) => void
     this.onMacroTrackToggle  = null;  // (macroId, nextTracked) => void
-    this.onEmitterDeploy = null;
-    this.onEmitterPauseToggle = null;
-    this.onEmitterRemove = null;
-    this.getEmitterMenuContext = null;
+    this.onEmitterPauseToggle = null; // (emitterId) => void
+    this.onEmitterRemove = null;      // (emitterId) => void
+    this.onDeployEmitterClick = null; // () => void
+    this.getEmitterMenuContext = null; // (emitterId) => { paused }
+    this.getToolsContext = null;      // () => tools readout state
     this.onCatalogEntryClick = null;  // (macroId) => void
+    this._wireToolsPanel();
     this._wireContextMenu();
     this._renderedLawCount = 0;
     this._unlockNodes  = new Map();
@@ -328,6 +335,14 @@ export class UI {
   }
 
   setAudio(audio) { this._audio = audio; }
+
+  _wireToolsPanel() {
+    if (!this.elEmitterDeployBtn) return;
+    this.elEmitterDeployBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.onDeployEmitterClick?.();
+    });
+  }
 
   _wireEraInfo() {
     if (!this.elEraInfo) return;
@@ -1159,19 +1174,18 @@ export class UI {
         const action = btn.dataset.action;
         if (action === 'rename') this._enterRenameMode();
         else if (action === 'track') this._toggleTrackFromMenu();
-        else if (action === 'emitter-deploy') {
-          if (btn.getAttribute('aria-disabled') === 'true') return;
-          const macroId = this._contextMenuMacroId;
-          if (typeof this.onEmitterDeploy === 'function' && macroId != null) this.onEmitterDeploy(macroId);
-          this.hideMacroContextMenu();
-        } else if (action === 'emitter-toggle') {
-          const macroId = this._contextMenuMacroId;
-          if (typeof this.onEmitterPauseToggle === 'function' && macroId != null) this.onEmitterPauseToggle(macroId);
-          this.hideMacroContextMenu();
+        else if (action === 'emitter-toggle') {
+          const emitterId = this._contextMenuEmitterId;
+          if (this._contextMenuTargetType === 'emitter' && typeof this.onEmitterPauseToggle === 'function' && emitterId != null) {
+            this.onEmitterPauseToggle(emitterId);
+          }
+          this.hideContextMenu();
         } else if (action === 'emitter-remove') {
-          const macroId = this._contextMenuMacroId;
-          if (typeof this.onEmitterRemove === 'function' && macroId != null) this.onEmitterRemove(macroId);
-          this.hideMacroContextMenu();
+          const emitterId = this._contextMenuEmitterId;
+          if (this._contextMenuTargetType === 'emitter' && typeof this.onEmitterRemove === 'function' && emitterId != null) {
+            this.onEmitterRemove(emitterId);
+          }
+          this.hideContextMenu();
         }
       });
     }
@@ -1183,7 +1197,7 @@ export class UI {
           this._commitRename();
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          this.hideMacroContextMenu();
+          this.hideContextMenu();
         }
       });
       // Form submit also commits (mobile keyboard "go" button).
@@ -1202,7 +1216,7 @@ export class UI {
     document.addEventListener('pointerdown', (e) => {
       if (!this._contextMenuOpen) return;
       if (menu.contains(e.target)) return;
-      this.hideMacroContextMenu();
+      this.hideContextMenu();
       e.stopPropagation();
       e.preventDefault();
     }, true); // capture phase so we run before canvas handlers
@@ -1210,28 +1224,39 @@ export class UI {
     // Escape closes from anywhere.
     document.addEventListener('keydown', (e) => {
       if (!this._contextMenuOpen) return;
-      if (e.key === 'Escape') this.hideMacroContextMenu();
+      if (e.key === 'Escape') this.hideContextMenu();
     });
   }
 
-  // opts: { macroId, screenX, screenY, kind, name, tracked }
-  showMacroContextMenu(opts) {
+  _applyContextMenuTargetVisibility() {
+    const targetType = this._contextMenuTargetType || 'macro';
+    for (const item of this._contextMenuItems) {
+      const itemTarget = item.dataset.target || 'macro';
+      item.hidden = itemTarget !== targetType;
+    }
+  }
+
+  showContextMenu(opts) {
     const menu = this.elContextMenu;
     if (!menu || !opts) return;
 
-    this._contextMenuMacroId = opts.macroId;
-    this._contextMenuMacroName = opts.name || '';
-    this._contextMenuMacroKind = opts.kind || 'structure';
+    const targetType = opts.targetType === 'emitter' ? 'emitter' : 'macro';
+    this._contextMenuTargetType = targetType;
+    this._contextMenuMacroId = targetType === 'macro' ? opts.macroId : null;
+    this._contextMenuEmitterId = targetType === 'emitter' ? opts.emitterId : null;
+    this._contextMenuMacroName = targetType === 'macro' ? (opts.name || '') : '';
+    this._contextMenuMacroKind = targetType === 'macro' ? (opts.kind || 'structure') : 'emitter';
     this._contextMenuOpen = true;
     this._contextMenuMode = 'actions';
 
-    menu.setAttribute('data-kind', opts.kind || 'structure');
-    menu.setAttribute('data-tracked', opts.tracked ? '1' : '0');
+    menu.setAttribute('data-kind', targetType === 'macro' ? (opts.kind || 'structure') : 'emitter');
+    menu.setAttribute('data-tracked', targetType === 'macro' && opts.tracked ? '1' : '0');
+    menu.setAttribute('data-target-type', targetType);
 
     if (this.elContextMenuTitle) {
-      const title = opts.name && opts.name.length
-        ? opts.name
-        : macroKindLabel(opts.kind);
+      const title = targetType === 'emitter'
+        ? (opts.title || 'Emitter')
+        : (opts.name && opts.name.length ? opts.name : macroKindLabel(opts.kind));
       if (this.elContextMenuTitle.textContent !== title) {
         this.elContextMenuTitle.textContent = title;
       }
@@ -1242,11 +1267,13 @@ export class UI {
     if (this.elContextMenuTrackGlyph) {
       this.elContextMenuTrackGlyph.textContent = opts.tracked ? '★' : '☆';
     }
-    this._applyEmitterMenuState(opts.macroId, opts);
+
+    this._applyContextMenuTargetVisibility();
+    if (targetType === 'emitter') this._applyEmitterContextMenuState(opts);
 
     // Start in actions mode (not rename) on every show.
     if (this.elContextMenuActions) this.elContextMenuActions.hidden = false;
-    if (this.elContextMenuRename)  this.elContextMenuRename.hidden  = true;
+    if (this.elContextMenuRename) this.elContextMenuRename.hidden = true;
 
     menu.hidden = false;
     this._contextMenuLastX = opts.screenX;
@@ -1286,11 +1313,21 @@ export class UI {
     });
   }
 
-  hideMacroContextMenu() {
+  showMacroContextMenu(opts) {
+    this.showContextMenu({ ...opts, targetType: 'macro' });
+  }
+
+  showEmitterContextMenu(opts) {
+    this.showContextMenu({ ...opts, targetType: 'emitter' });
+  }
+
+  hideContextMenu() {
     const menu = this.elContextMenu;
     if (!menu || !this._contextMenuOpen) return;
     this._contextMenuOpen = false;
+    this._contextMenuTargetType = 'macro';
     this._contextMenuMacroId = null;
+    this._contextMenuEmitterId = null;
     this._contextMenuMode = 'actions';
     menu.removeAttribute('data-visible');
     menu.hidden = true;
@@ -1299,6 +1336,8 @@ export class UI {
       this.elContextMenuInput.blur();
     }
   }
+
+  hideMacroContextMenu() { this.hideContextMenu(); }
 
   isContextMenuOpen() { return this._contextMenuOpen; }
 
@@ -1350,10 +1389,10 @@ export class UI {
   }
 
   _enterRenameMode() {
-    if (!this.elContextMenu) return;
+    if (!this.elContextMenu || this._contextMenuTargetType !== 'macro') return;
     this._contextMenuMode = 'rename';
     if (this.elContextMenuActions) this.elContextMenuActions.hidden = true;
-    if (this.elContextMenuRename)  this.elContextMenuRename.hidden  = false;
+    if (this.elContextMenuRename) this.elContextMenuRename.hidden = false;
     if (this.elContextMenuInput) {
       // Pre-fill with the name we opened the menu for (stashed from opts),
       // never from the inspector DOM. The inspector might be showing a
@@ -1375,71 +1414,78 @@ export class UI {
   _commitRename() {
     const id = this._contextMenuMacroId;
     const value = this.elContextMenuInput ? this.elContextMenuInput.value : '';
-    if (typeof this.onMacroRename === 'function' && id != null) {
+    if (this._contextMenuTargetType === 'macro' && typeof this.onMacroRename === 'function' && id != null) {
       this.onMacroRename(id, value);
     }
-    this.hideMacroContextMenu();
+    this.hideContextMenu();
   }
 
   _toggleTrackFromMenu() {
     const id = this._contextMenuMacroId;
-    if (id == null) return;
+    if (this._contextMenuTargetType !== 'macro' || id == null) return;
     const menu = this.elContextMenu;
     const nextTracked = !(menu.getAttribute('data-tracked') === '1');
     if (typeof this.onMacroTrackToggle === 'function') {
       this.onMacroTrackToggle(id, nextTracked);
     }
-    this.hideMacroContextMenu();
+    this.hideContextMenu();
   }
 
-  _applyEmitterMenuState(macroId, opts = null) {
-    const emitterCtx = (typeof this.getEmitterMenuContext === 'function')
-      ? this.getEmitterMenuContext(macroId)
+  _applyEmitterContextMenuState(opts = null) {
+    const emitterId = this._contextMenuEmitterId;
+    const emitterCtx = (typeof this.getEmitterMenuContext === 'function' && emitterId != null)
+      ? this.getEmitterMenuContext(emitterId)
       : null;
-    const emitterState = emitterCtx?.emitterState ?? opts?.emitterState ?? 'none';
-    const eraIndex = emitterCtx?.eraIndex ?? opts?.eraIndex ?? 0;
-    const eraGate = emitterCtx?.emitterEraGate ?? opts?.emitterEraGate ?? 3;
-    const deployCost = emitterCtx?.deployCost ?? opts?.deployCost ?? 0;
-    const canAfford = emitterCtx?.canAfford ?? opts?.canAfford ?? false;
+    const paused = !!(emitterCtx?.paused ?? opts?.paused);
 
-    const showDeploy = emitterState === 'none' && eraIndex >= eraGate;
-    if (this.elContextMenuEmitterDeploy) {
-      this.elContextMenuEmitterDeploy.hidden = !showDeploy;
-      if (showDeploy) {
-        this.elContextMenuEmitterDeploy.setAttribute('aria-disabled', canAfford ? 'false' : 'true');
-        if (this.elContextMenuEmitterDeployCost) {
-          this.elContextMenuEmitterDeployCost.textContent = `${fmt(deployCost)} Potential`;
-        }
-      } else {
-        this.elContextMenuEmitterDeploy.setAttribute('aria-disabled', 'false');
-        if (this.elContextMenuEmitterDeployCost) this.elContextMenuEmitterDeployCost.textContent = '';
-      }
+    if (this.elContextMenuEmitterToggleLabel) {
+      this.elContextMenuEmitterToggleLabel.textContent = paused ? 'Resume Emitter' : 'Pause Emitter';
     }
-
-    const showToggle = emitterState !== 'none';
-    if (this.elContextMenuEmitterToggle) {
-      this.elContextMenuEmitterToggle.hidden = !showToggle;
-      if (showToggle) {
-        const paused = emitterState === 'paused';
-        if (this.elContextMenuEmitterToggleLabel) {
-          this.elContextMenuEmitterToggleLabel.textContent = paused ? 'Resume Emitter' : 'Pause Emitter';
-        }
-        if (this.elContextMenuEmitterToggleGlyph) {
-          this.elContextMenuEmitterToggleGlyph.textContent = paused ? '▶' : '⏸';
-        }
-      }
-    }
-
-    if (this.elContextMenuEmitterRemove) {
-      this.elContextMenuEmitterRemove.hidden = emitterState === 'none';
+    if (this.elContextMenuEmitterToggleGlyph) {
+      this.elContextMenuEmitterToggleGlyph.textContent = paused ? '▶' : '⏸';
     }
   }
 
   refreshContextMenuForMacro(macroId) {
-    if (!this._contextMenuOpen || this._contextMenuMacroId !== macroId) return;
-    this._applyEmitterMenuState(macroId);
+    if (!this._contextMenuOpen || this._contextMenuTargetType !== 'macro' || this._contextMenuMacroId !== macroId) return;
     if (this._contextMenuLastX != null) {
       this._positionContextMenu(this._contextMenuLastX, this._contextMenuLastY);
+    }
+  }
+
+  refreshContextMenuForEmitter(emitterId) {
+    if (!this._contextMenuOpen || this._contextMenuTargetType !== 'emitter' || this._contextMenuEmitterId !== emitterId) return;
+    this._applyEmitterContextMenuState();
+    if (this._contextMenuLastX != null) {
+      this._positionContextMenu(this._contextMenuLastX, this._contextMenuLastY);
+    }
+  }
+
+  updateTools() {
+    const ctx = (typeof this.getToolsContext === 'function') ? this.getToolsContext() : null;
+    const eraIndex = ctx?.eraIndex ?? 0;
+    const eraGate = ctx?.eraGate ?? 3;
+    const deployCost = ctx?.deployCost ?? 0;
+    const canAfford = !!ctx?.canAfford;
+    const placementActive = !!ctx?.placementActive;
+    const activeCount = ctx?.activeCount ?? 0;
+    const deployedCount = ctx?.deployedCount ?? 0;
+    const pausedCount = Math.max(0, deployedCount - activeCount);
+    const throughputPerSec = ctx?.throughputPerSec ?? 0;
+    const toolsUnlocked = eraIndex >= eraGate;
+
+    if (this.elInstrumentsTools) this.elInstrumentsTools.hidden = !toolsUnlocked;
+    if (this.elEmitterDeployBtn) {
+      this.elEmitterDeployBtn.disabled = !canAfford;
+      this.elEmitterDeployBtn.setAttribute('aria-pressed', placementActive ? 'true' : 'false');
+    }
+    if (this.elEmitterDeployCost) {
+      this.elEmitterDeployCost.textContent = `${fmt(deployCost)} Potential`;
+    }
+    if (this.elEmitterReadout) {
+      this.elEmitterReadout.textContent = deployedCount <= 0
+        ? 'Emitters: 0 placed'
+        : `Emitters: ${activeCount} active${pausedCount > 0 ? ` · ${pausedCount} paused` : ''} · +${throughputPerSec.toFixed(1)} Potential/sec`;
     }
   }
 
@@ -1711,6 +1757,7 @@ export class UI {
     // Sync both side panels (Unlocks above, Instruments below)
     this._syncListPanel(state, UNLOCK_DEFINITIONS, this.elUnlocks, this.elUnlocksPanel, this._unlockNodes);
     this._syncListPanel(state, INSTRUMENT_DEFINITIONS, this.elInstruments, this.elInstrumentsPanel, this._instrumentNodes);
+    this.updateTools();
 
     // Build global settings panel content on first render (state is now loaded)
     if (!this._globalSettingsBuilt) this._populateGlobalSettings(state);

@@ -11,8 +11,7 @@ export const MAX_MACROS = 40;           // cap macros to keep render cheap
 export const MACRO_CRADLE_THRESHOLD = 500; // mass at which a macro is a "Cradle" (rare, meaningful)
 export const STAR_IGNITION_THRESHOLD = 1500;
 export const EMITTER_RATE_HZ = 0.5;       // particles per second per active emitter
-const EMITTER_OFFSET = 30;                // world-px from macro edge (not center)
-const EMITTER_PARTICLE_SPEED = 12;        // initial speed toward macro
+export const EMITTER_PARTICLE_MASS = 60;
 export const EMITTER_ERA_GATE = 3;        // earliest era index that allows deploy
 // Cosmic time scale: every real second of sim time represents this many years
 // in the player-facing universe. Internal dt math stays in real seconds; this
@@ -37,6 +36,7 @@ export class Simulation {
     this.totalMerges = 0;
     this.totalSpawned = 0;
     this.totalElapsedS = 0;  // simulation timeline in seconds (used for auto-naming)
+    this.onEmitterEmit = null;
   }
 
   setBounds(w, h) { this.bounds.w = w; this.bounds.h = h; }
@@ -67,9 +67,9 @@ export class Simulation {
     return null;
   }
 
-  getEmitterForMacro(macroId) {
+  getEmitterById(id) {
     for (const emitter of this.emitters) {
-      if (emitter.macroId === macroId) return emitter;
+      if (emitter.id === id) return emitter;
     }
     return null;
   }
@@ -78,13 +78,19 @@ export class Simulation {
     return this.emitters.length;
   }
 
-  deployEmitter(macroId) {
-    if (!this._macroById(macroId)) return null;
-    if (this.getEmitterForMacro(macroId)) return null;
+  activeEmitterCount() {
+    let count = 0;
+    for (const emitter of this.emitters) {
+      if (!emitter.paused) count++;
+    }
+    return count;
+  }
+
+  deployEmitterAt(x, y) {
     const emitter = {
       id: this._nextEmitterId++,
-      macroId,
-      angle: Math.random() * Math.PI * 2,
+      x,
+      y,
       paused: false,
       accum: 0
     };
@@ -92,15 +98,15 @@ export class Simulation {
     return emitter;
   }
 
-  removeEmitter(macroId) {
-    const idx = this.emitters.findIndex(e => e.macroId === macroId);
+  removeEmitterById(id) {
+    const idx = this.emitters.findIndex(e => e.id === id);
     if (idx < 0) return false;
     this.emitters.splice(idx, 1);
     return true;
   }
 
-  setEmitterPaused(macroId, paused) {
-    const emitter = this.getEmitterForMacro(macroId);
+  setEmitterPausedById(id, paused) {
+    const emitter = this.getEmitterById(id);
     if (!emitter) return false;
     emitter.paused = !!paused;
     return true;
@@ -112,7 +118,7 @@ export class Simulation {
     return this.spawnParticleWithVelocity(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed);
   }
 
-  spawnParticleWithVelocity(x, y, vx, vy) {
+  spawnParticleWithVelocity(x, y, vx, vy, opts) {
     if (this.particles.length >= MAX_PARTICLES) {
       // Drop the oldest non-massive particle to make room
       let oldestIdx = -1;
@@ -124,13 +130,16 @@ export class Simulation {
       if (oldestIdx >= 0) this.particles.splice(oldestIdx, 1);
       else this.particles.shift();
     }
+    const mass = opts?.mass ?? 1;
+    const r = opts?.r ?? 2.2;
+    const hue = opts?.hue ?? (195 + Math.random() * 95);
     const particle = {
       id: this.nextId++,
       x, y,
       vx, vy,
-      mass: 1,
-      r: 2.2,
-      hue: 195 + Math.random() * 95,   // blue → violet → magenta range
+      mass,
+      r,
+      hue,
       age: 0,
       alive: true
     };
@@ -244,30 +253,30 @@ export class Simulation {
       this._mergeMacros();
     }
 
-    // 7. Emitters: auto-spawn particles around a parent macro and feed them
-    // inward. Emitters tied to absorbed macros are culled here.
-    for (let i = this.emitters.length - 1; i >= 0; i--) {
-      const emitter = this.emitters[i];
-      const macro = this._macroById(emitter.macroId);
-      if (!macro) {
-        this.emitters.splice(i, 1);
-        continue;
-      }
+    // 7. Emitters: standalone world entities that spray dense packets outward
+    // in random directions. Gravity determines what they ultimately feed.
+    for (const emitter of this.emitters) {
       if (emitter.paused) continue;
       emitter.accum += dt;
       const interval = 1 / EMITTER_RATE_HZ;
       while (emitter.accum >= interval) {
         emitter.accum -= interval;
-        const cos = Math.cos(emitter.angle);
-        const sin = Math.sin(emitter.angle);
-        const x = macro.x + cos * (macro.r + EMITTER_OFFSET);
-        const y = macro.y + sin * (macro.r + EMITTER_OFFSET);
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 6 + 1.5;
         this.spawnParticleWithVelocity(
-          x,
-          y,
-          -cos * EMITTER_PARTICLE_SPEED,
-          -sin * EMITTER_PARTICLE_SPEED
+          emitter.x,
+          emitter.y,
+          Math.cos(angle) * speed,
+          Math.sin(angle) * speed,
+          // Dense packet: 0.97 retention means particles must exceed ~3% of
+          // the macro's mass to net-grow it. Mass 60 stays positive past the
+          // ignition target (1500 * 0.031 ≈ 46) and gives a satisfying feed
+          // rate of ~12-25 mass/sec at 0.5Hz emission.
+          { mass: EMITTER_PARTICLE_MASS, r: 3.4, hue: 38 + Math.random() * 18 }
         );
+        if (typeof this.onEmitterEmit === 'function') {
+          this.onEmitterEmit(emitter);
+        }
       }
     }
 
@@ -480,8 +489,8 @@ export class Simulation {
         history: Array.isArray(m.history) ? m.history.slice() : []
       })),
       emitters: this.emitters.map(e => ({
-        macroId: e.macroId,
-        angle: e.angle,
+        x: e.x,
+        y: e.y,
         paused: e.paused,
         accum: e.accum
       })),
@@ -544,11 +553,20 @@ export class Simulation {
 
     if (Array.isArray(d.emitters)) {
       for (const e of d.emitters) {
-        if (!e || typeof e !== 'object' || !this._macroById(e.macroId)) continue;
+        if (!e || typeof e !== 'object') continue;
+        let x = e.x;
+        let y = e.y;
+        if (typeof x !== 'number' || typeof y !== 'number') {
+          if (typeof e.macroId !== 'number') continue;
+          const macro = this._macroById(e.macroId);
+          if (!macro) continue;
+          x = macro.x;
+          y = macro.y;
+        }
         this.emitters.push({
           id: this._nextEmitterId++,
-          macroId: e.macroId,
-          angle: typeof e.angle === 'number' ? e.angle : 0,
+          x,
+          y,
           paused: !!e.paused,
           accum: typeof e.accum === 'number' ? e.accum : 0
         });

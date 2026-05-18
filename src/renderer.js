@@ -95,6 +95,10 @@ export class Renderer {
     // tap landed even when nothing else is rendered.
     this._ripples = [];
 
+    // Placement preview cursor in internal canvas pixels.
+    this._cursorScreenX = null;
+    this._cursorScreenY = null;
+
     // --- Cosmic Web (Era 4+) state ---
     // Tracks live filament connections between macro pairs so each new
     // connection animates a reveal sweep and triggers a one-time audio swell.
@@ -115,6 +119,14 @@ export class Renderer {
   setCameraCenter(x, y) { this.cam.x = x; this.cam.y = y; }
   setTargetZoom(z)      { this.targetZoom = z; }
   setTargetThermalAlpha(v) { this.targetThermalAlpha = v; }
+  setCursor(sx, sy) {
+    this._cursorScreenX = sx;
+    this._cursorScreenY = sy;
+  }
+  clearCursor() {
+    this._cursorScreenX = null;
+    this._cursorScreenY = null;
+  }
 
   // Queue a tap-feedback ripple at the given world coordinate.
   addRipple(worldX, worldY) {
@@ -262,7 +274,7 @@ export class Renderer {
     return Math.floor((((hue % 360) + 360) % 360) / 360 * n) % n;
   }
 
-  render(sim, state) {
+  render(sim, state, ui = null) {
     const ctx = this.ctx;
     const W = this.canvas.width;
     const H = this.canvas.height;
@@ -365,7 +377,7 @@ export class Renderer {
     // accretion ring) draws between the diffuse particle field and the
     // bright macro core, so the macro still reads as the focal point.
     for (const m of sim.macros)    this._drawMacroAtmosphere(m, t, sim.totalElapsedS);
-    this._drawEmitters(sim, t, z);
+    this._drawEmitters(sim, t, z, ui);
     for (const m of sim.macros)    this._drawMacro(m);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
@@ -538,65 +550,71 @@ export class Renderer {
     ctx.drawImage(sprite, m.x - glowR, m.y - glowR, glowR * 2, glowR * 2);
   }
 
-  _drawEmitters(sim, nowS, z) {
+  _drawEmitterGlyph(x, y, z, opts = {}) {
     const ctx = this.ctx;
-    if (!Array.isArray(sim.emitters) || sim.emitters.length === 0) return;
+    const paused = !!opts.paused;
+    const ghost = !!opts.ghost;
+    const pulse = ghost ? 0 : Math.sin((opts.nowS || 0) * 4);
+    const activeAlpha = ghost ? 0.4 : 0.55 + 0.35 * pulse;
+    const stroke = paused
+      ? (ghost ? 'rgba(176, 168, 156, 0.2)' : 'rgba(190, 180, 165, 0.25)')
+      : (ghost ? `rgba(196, 170, 122, ${activeAlpha})` : `rgba(212, 168, 92, ${activeAlpha})`);
+    const fill = ghost
+      ? `rgba(196, 170, 122, ${Math.min(1, activeAlpha + 0.04)})`
+      : `rgba(212, 168, 92, ${Math.min(1, activeAlpha + 0.08)})`;
 
-    // Emitters orbit in world space, but their indicator should stay UI-sized
-    // on screen regardless of zoom, so radii/line widths are expressed in
-    // world units derived from screen pixels.
+    // Emitters live in world space, but the marker should stay UI-sized on
+    // screen, so radii/line widths are expressed in world units derived from
+    // screen pixels.
     const ringR = (5 * this.dpr) / z;
     const dotR = (2 * this.dpr) / z;
     const ringW = (1.5 * this.dpr) / z;
-    const trailLen = (3 * this.dpr) / z;
     const pauseHalfH = (2.2 * this.dpr) / z;
     const pauseGap = (1.5 * this.dpr) / z;
 
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = ringW;
+    ctx.beginPath();
+    ctx.arc(x, y, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (paused) {
+      ctx.beginPath();
+      ctx.moveTo(x - pauseGap, y - pauseHalfH);
+      ctx.lineTo(x - pauseGap, y + pauseHalfH);
+      ctx.moveTo(x + pauseGap, y - pauseHalfH);
+      ctx.lineTo(x + pauseGap, y + pauseHalfH);
+      ctx.stroke();
+      return;
+    }
+
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.arc(x, y, dotR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  _drawEmitters(sim, nowS, z, ui = null) {
+    const ctx = this.ctx;
+    const emitters = Array.isArray(sim.emitters) ? sim.emitters : [];
+    const placementMode = !!(ui && ui.placementMode);
+    const hasCursor = this._cursorScreenX != null && this._cursorScreenY != null;
+
+    if (emitters.length === 0 && !(placementMode && hasCursor)) return;
+
     ctx.save();
     ctx.lineCap = 'round';
-    for (const emitter of sim.emitters) {
-      const macro = sim.getMacroById?.(emitter.macroId) || sim.macros.find((m) => m.id === emitter.macroId);
-      if (!macro) continue;
+    for (const emitter of emitters) {
+      if (!Number.isFinite(emitter?.x) || !Number.isFinite(emitter?.y)) continue;
+      this._drawEmitterGlyph(emitter.x, emitter.y, z, {
+        nowS,
+        paused: !!emitter.paused,
+      });
+    }
 
-      const ex = macro.x + Math.cos(emitter.angle) * (macro.r + 30);
-      const ey = macro.y + Math.sin(emitter.angle) * (macro.r + 30);
-      const paused = !!emitter.paused;
-      const alpha = paused ? 0.25 : 0.55 + 0.35 * Math.sin(nowS * 4);
-      const stroke = paused
-        ? 'rgba(190, 180, 165, 0.25)'
-        : `rgba(212, 168, 92, ${alpha})`;
-
-      if (!paused) {
-        const dx = macro.x - ex;
-        const dy = macro.y - ey;
-        const len = Math.hypot(dx, dy) || 1;
-        ctx.strokeStyle = 'rgba(212, 168, 92, 0.18)';
-        ctx.lineWidth = (1.1 * this.dpr) / z;
-        ctx.beginPath();
-        ctx.moveTo(ex, ey);
-        ctx.lineTo(ex + (dx / len) * trailLen, ey + (dy / len) * trailLen);
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = ringW;
-      ctx.beginPath();
-      ctx.arc(ex, ey, ringR, 0, Math.PI * 2);
-      ctx.stroke();
-
-      if (paused) {
-        ctx.beginPath();
-        ctx.moveTo(ex - pauseGap, ey - pauseHalfH);
-        ctx.lineTo(ex - pauseGap, ey + pauseHalfH);
-        ctx.moveTo(ex + pauseGap, ey - pauseHalfH);
-        ctx.lineTo(ex + pauseGap, ey + pauseHalfH);
-        ctx.stroke();
-      } else {
-        ctx.fillStyle = `rgba(212, 168, 92, ${Math.min(1, alpha + 0.08)})`;
-        ctx.beginPath();
-        ctx.arc(ex, ey, dotR, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    if (placementMode && hasCursor) {
+      const ghost = this.screenToWorld(this._cursorScreenX, this._cursorScreenY);
+      this._drawEmitterGlyph(ghost.x, ghost.y, z, { ghost: true, nowS });
     }
     ctx.restore();
   }

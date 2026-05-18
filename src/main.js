@@ -8,7 +8,7 @@ import { UI }         from './ui.js';
 import { Audio }      from './audio.js';
 import { loadGame, saveGame, clearSave, setFreshUntil } from './save.js';
 import { ERAS, MIN_ZOOM, FIRST_LIGHT_ERA } from './eras.js';
-import { MACRO_CRADLE_THRESHOLD, EMITTER_ERA_GATE } from './simulation.js';
+import { MACRO_CRADLE_THRESHOLD, EMITTER_ERA_GATE, EMITTER_RATE_HZ } from './simulation.js';
 import './mobile.js';
 import './ios-install-hint.js';
 
@@ -18,6 +18,7 @@ const audio  = new Audio();
 const renderer = new Renderer(canvas, audio);
 const state  = new GameState();
 const ui     = new UI();
+let placementMode = false;
 
 // --- Load saved game ---
 const saved = loadGame();
@@ -45,42 +46,59 @@ ui.onMacroTrackToggle = (id, nextTracked) => {
   sim.setMacroTracked(id, nextTracked);
   if (state.requestSave) state.requestSave();
 };
-ui.onEmitterDeploy = (macroId) => {
+sim.onEmitterEmit = (_emitter) => {
+  state.potential += 1;
+};
+ui.onDeployEmitterClick = () => {
   if (state.eraIndex < EMITTER_ERA_GATE) return;
-  const count = sim.deployedEmitterCount();
-  const cost = emitterDeployCost(count);
+  if (placementMode) {
+    placementMode = false;
+    refreshTools();
+    return;
+  }
+  const cost = emitterDeployCost(sim.deployedEmitterCount());
   if (state.potential < cost) return;
-  const emitter = sim.deployEmitter(macroId);
-  if (!emitter) return;
-  state.potential -= cost;
-  state.requestSave?.();
-  ui.refreshContextMenuForMacro?.(macroId);
+  placementMode = true;
+  refreshTools();
 };
-ui.onEmitterPauseToggle = (macroId) => {
-  const e = sim.getEmitterForMacro(macroId);
+ui.onEmitterPauseToggle = (emitterId) => {
+  const e = sim.getEmitterById(emitterId);
   if (!e) return;
-  sim.setEmitterPaused(macroId, !e.paused);
+  sim.setEmitterPausedById(emitterId, !e.paused);
   state.requestSave?.();
-  ui.refreshContextMenuForMacro?.(macroId);
+  ui.refreshContextMenuForEmitter?.(emitterId);
+  refreshTools();
 };
-ui.onEmitterRemove = (macroId) => {
-  if (!sim.removeEmitter(macroId)) return;
+ui.onEmitterRemove = (emitterId) => {
+  if (!sim.removeEmitterById(emitterId)) return;
   state.requestSave?.();
-  ui.refreshContextMenuForMacro?.(macroId);
+  refreshTools();
 };
-function buildEmitterMenuContext(macroId) {
-  const e = sim.getEmitterForMacro(macroId);
-  const emitterState = !e ? 'none' : (e.paused ? 'paused' : 'active');
-  const deployCost = emitterDeployCost(sim.deployedEmitterCount());
+ui.getToolsContext = () => {
+  const deployedCount = sim.deployedEmitterCount();
+  const activeCount = sim.activeEmitterCount();
+  const deployCost = emitterDeployCost(deployedCount);
   return {
-    emitterState,
     eraIndex: state.eraIndex,
+    eraGate: EMITTER_ERA_GATE,
+    deployedCount,
+    activeCount,
     deployCost,
     canAfford: state.potential >= deployCost,
-    emitterEraGate: EMITTER_ERA_GATE,
+    placementActive: placementMode,
+    throughputPerSec: activeCount * EMITTER_RATE_HZ,
   };
+};
+ui.getEmitterMenuContext = (emitterId) => {
+  const e = sim.getEmitterById(emitterId);
+  if (!e) return null;
+  return { paused: !!e.paused };
+};
+ui.placementMode = false;
+function refreshTools() {
+  ui.updateTools?.();
+  ui.placementMode = placementMode;
 }
-ui.getEmitterMenuContext = buildEmitterMenuContext;
 ui.onCatalogEntryClick = (id) => {
   inspectorPinId = id;
   inspectorPinSource = 'catalog';
@@ -133,6 +151,7 @@ if (state.lensVisuallyActive) {
   renderer.scanProgress = 1.0;
   renderer.scanActive = false;
 }
+refreshTools();
 
 // Track lens activation so we can trigger the scan reveal exactly once,
 // at the moment the player first earns it.
@@ -179,16 +198,16 @@ const TAP_SLOP_PX = 10;     // CSS pixels of movement allowed before tap → dra
 const TAP_MAX_MS = 600;     // beyond this, a held finger no longer pins
 const LONG_PRESS_MS = 550;  // touch/pen hold-to-open-context-menu threshold
 
-// Long-press timer. When a touch starts on a macro and stays still for
+// Long-press timer. When a touch starts on a world entity and stays still for
 // LONG_PRESS_MS, fire the context menu and cancel the pending pin.
 let longPressTimer = null;
-let longPressMacroId = null;
+let longPressTarget = null;
 let longPressOrigin = null; // { clientX, clientY }
 
 function clearLongPress() {
   if (longPressTimer) clearTimeout(longPressTimer);
   longPressTimer = null;
-  longPressMacroId = null;
+  longPressTarget = null;
   longPressOrigin = null;
 }
 
@@ -239,7 +258,7 @@ function currentSpawnInterval() {
 }
 
 function tickHold() {
-  if (!holding) return;
+  if (!holding || placementMode) return;
   const now = performance.now();
   if (now - lastSpawnAt >= currentSpawnInterval()) {
     spawnAtScreen(screenPos.x, screenPos.y);
@@ -263,6 +282,21 @@ function hitPadWorld(cssPx) {
 function pickMacroAtScreen(sx, sy, cssPad) {
   const w = renderer.screenToWorld(sx, sy);
   return sim.pickMacroAt(w.x, w.y, hitPadWorld(cssPad));
+}
+
+function pickEmitterAtScreen(sx, sy, radiusWorld = 12) {
+  const w = renderer.screenToWorld(sx, sy);
+  let best = null;
+  let bestDist = Infinity;
+  for (const emitter of sim.emitters) {
+    const dx = emitter.x - w.x;
+    const dy = emitter.y - w.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > radiusWorld || dist >= bestDist) continue;
+    best = emitter;
+    bestDist = dist;
+  }
+  return best;
 }
 
 function macroInspectorData(m, pinned, source = null) {
@@ -345,14 +379,43 @@ function resolveInspector() {
 
 function macroMenuOpts(m, clientX, clientY) {
   return {
+    targetType: 'macro',
     macroId: m.id,
     screenX: clientX,
     screenY: clientY,
     kind: m.kind,
     name: m.name || null,
     tracked: !!m.tracked,
-    ...buildEmitterMenuContext(m.id)
   };
+}
+
+function resolveContextTargetAtScreen(sx, sy) {
+  const emitter = pickEmitterAtScreen(sx, sy, 12);
+  if (emitter) return { type: 'emitter', emitter };
+  const macro = pickMacroAtScreen(sx, sy, 16);
+  if (macro) return { type: 'macro', macro };
+  return null;
+}
+
+function showResolvedContextMenu(target, clientX, clientY, anchorMode = 'corner') {
+  if (!target) return;
+  if (target.type === 'emitter') {
+    const menuCtx = ui.getEmitterMenuContext?.(target.emitter.id);
+    const opts = {
+      targetType: 'emitter',
+      emitterId: target.emitter.id,
+      paused: !!menuCtx?.paused,
+      screenX: clientX,
+      screenY: clientY,
+      anchorMode,
+    };
+    if (typeof ui.showContextMenu === 'function') ui.showContextMenu(opts);
+    else ui.showMacroContextMenu?.(opts);
+    return;
+  }
+  const opts = { ...macroMenuOpts(target.macro, clientX, clientY), anchorMode };
+  if (typeof ui.showContextMenu === 'function') ui.showContextMenu(opts);
+  else ui.showMacroContextMenu?.(opts);
 }
 
 function touchPointerClient(e) {
@@ -543,31 +606,56 @@ canvas.addEventListener('pointerdown', (e) => {
     ui.showTouchPointerAt(p.x, p.y);
   }
 
-  // Touch (or pen) on a macro: tentative pin. We hold off spawning until the
-  // pointer either lifts (confirming the tap), moves past the slop (drag), or
-  // is held long enough to open the context menu.
-  if ((lastPointerType === 'touch' || lastPointerType === 'pen') && inspectorAllowed()) {
-    const m = pickMacroAtScreen(x, y, 16);
-    if (m) {
-      pendingPinId = m.id;
+  if (placementMode) {
+    const cost = emitterDeployCost(sim.deployedEmitterCount());
+    if (state.potential < cost) {
+      placementMode = false;
+      refreshTools();
+      return;
+    }
+    const w = renderer.screenToWorld(x, y);
+    const emitter = sim.deployEmitterAt(w.x, w.y);
+    if (emitter) {
+      state.potential -= cost;
+      state.requestSave?.();
+    }
+    placementMode = false;
+    refreshTools();
+    return;
+  }
+
+  // Touch (or pen) on a world entity: tentative pin for macros, with long-press
+  // opening whichever context menu sits under the pointer.
+  if (lastPointerType === 'touch' || lastPointerType === 'pen') {
+    const target = resolveContextTargetAtScreen(x, y);
+    if (target && (target.type === 'emitter' || inspectorAllowed())) {
+      pendingPinId = target.type === 'macro' ? target.macro.id : null;
       pendingPinStart = { x, y, pointerId: e.pointerId, t: performance.now() };
       canvas.setPointerCapture(e.pointerId);
 
-      // Schedule long-press: if the user holds still, open the context menu.
-      longPressMacroId = m.id;
+      longPressTarget = target.type === 'emitter'
+        ? { type: 'emitter', id: target.emitter.id }
+        : { type: 'macro', id: target.macro.id };
       longPressOrigin = { clientX: e.clientX, clientY: e.clientY };
       longPressTimer = setTimeout(() => {
-        // Re-validate: macro might have moved or merged; refetch by id.
-        const mNow = findMacroById(longPressMacroId);
-        if (!mNow) { clearLongPress(); return; }
-        // Cancel the pending pin: long-press wins.
+        if (!longPressTarget) return;
+        const targetNow = longPressTarget.type === 'emitter'
+          ? (() => {
+              const emitter = sim.getEmitterById(longPressTarget.id);
+              return emitter ? { type: 'emitter', emitter } : null;
+            })()
+          : (() => {
+              const macro = findMacroById(longPressTarget.id);
+              return macro ? { type: 'macro', macro } : null;
+            })();
+        if (!targetNow) { clearLongPress(); return; }
         pendingPinId = null;
         pendingPinStart = null;
-        ui.showMacroContextMenu({ ...macroMenuOpts(mNow, longPressOrigin.clientX, longPressOrigin.clientY), anchorMode: 'right' });
+        showResolvedContextMenu(targetNow, longPressOrigin.clientX, longPressOrigin.clientY, 'right');
         clearLongPress();
       }, LONG_PRESS_MS);
 
-      return; // no spawn, no hold yet
+      return;
     }
   }
 
@@ -582,20 +670,20 @@ canvas.addEventListener('pointerdown', (e) => {
   requestAnimationFrame(tickHold);
 });
 
-// Right-click anywhere on the canvas: if on a macro, open the context menu.
-// Otherwise suppress the default browser context menu so right-click on empty
-// space doesn't surface the OS menu over the simulation.
+// Right-click anywhere on the canvas: if on a world entity, open its context
+// menu. Otherwise suppress the default browser context menu so right-click on
+// empty space doesn't surface the OS menu over the simulation.
 canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  if (!inspectorAllowed()) return;
   // After a touch long-press, the browser synthesizes a contextmenu event on
   // finger lift. The menu is already open in 'right' anchor mode -- don't
   // re-open it in 'corner' mode and snap it below the lift point.
   if (ui.isContextMenuOpen && ui.isContextMenuOpen()) return;
   const { x, y } = eventToScreen(e);
-  const m = pickMacroAtScreen(x, y, 16);
-  if (!m) return;
-  ui.showMacroContextMenu(macroMenuOpts(m, e.clientX, e.clientY));
+  const target = resolveContextTargetAtScreen(x, y);
+  if (!target) return;
+  if (target.type === 'macro' && !inspectorAllowed()) return;
+  showResolvedContextMenu(target, e.clientX, e.clientY);
 });
 
 canvas.addEventListener('pointermove', (e) => {
@@ -627,13 +715,16 @@ canvas.addEventListener('pointermove', (e) => {
   pointerInside = true;
   if (e.pointerType) lastPointerType = effectivePointerType(e);
 
+  // Placement-mode ghost emitter follows the cursor.
+  renderer.setCursor?.(x, y);
+
   if (lastPointerType === 'touch') {
     const p = touchPointerClient(e);
     ui.showTouchPointerAt(p.x, p.y);
   }
 
-  // If we have a pending pin (touch/pen on a macro), watch for drag.
-  if (pendingPinId != null && pendingPinStart) {
+  // If we have a pending touch/pen interaction on a world entity, watch for drag.
+  if (pendingPinStart) {
     const rect = canvas.getBoundingClientRect();
     const dxCss = (x - pendingPinStart.x) * (rect.width  / canvas.width);
     const dyCss = (y - pendingPinStart.y) * (rect.height / canvas.height);
@@ -644,6 +735,7 @@ canvas.addEventListener('pointermove', (e) => {
       pendingPinId = null;
       pendingPinStart = null;
       clearLongPress();
+      if (placementMode) return;
       holding = true;
       holdStartAt = performance.now();
       lastSpawnAt = 0;
@@ -702,6 +794,7 @@ canvas.addEventListener('pointerup',     endHold);
 canvas.addEventListener('pointercancel', endHold);
 canvas.addEventListener('pointerleave',  (e) => {
   pointerInside = false;
+  renderer.clearCursor?.();
   endHold(e);
 });
 window.addEventListener('blur',          () => { pointerInside = false; endHold(); });
@@ -760,6 +853,11 @@ window.addEventListener('keydown', (e) => {
     spaceHeld = true;
     if (!panActive) canvas.style.cursor = 'grab';
     e.preventDefault();
+    return;
+  }
+  if (e.key === 'Escape' && placementMode) {
+    placementMode = false;
+    refreshTools();
     return;
   }
   if (isTypingInInput()) return;
@@ -910,8 +1008,9 @@ function frame(now) {
   sim.tick(dt);
   state.update(sim, renderer);
   updateSmartTracking(dt);
-  renderer.render(sim, state);
+  renderer.render(sim, state, ui);
   ui.render(state);
+  ui.updateTools?.();
   resolveInspector();
   ui.renderCatalog(sim, inspectorPinId, MACRO_CRADLE_THRESHOLD);
 
