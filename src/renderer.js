@@ -504,10 +504,13 @@ export class Renderer {
       ctx.fill();
     }
 
-    // 3) Feeding streams — short curved filaments curling inward from
-    // the halo edge toward the macro. Each stream has its own phase so
-    // they appear and fade asynchronously, giving the impression of
-    // continuous infall.
+    // 3) Feeding funnels — dust streams curling inward from the halo edge
+    // toward the macro. Each funnel is a wide soft underlay (gives the
+    // wisp continuity) plus a sequence of overlapping dust grains sampled
+    // along the curve. Grains taper from large/dim at the outer end to
+    // small/bright as they spiral toward the macro, so the trail reads as
+    // a narrowing funnel rather than a uniform line. Additive blending
+    // merges the grain overlap into a continuous dusty sweep.
     const streamCount = 3 + Math.round(intensity * 2); // 3..5
     ctx.lineCap = 'round';
     for (let i = 0; i < streamCount; i++) {
@@ -516,7 +519,7 @@ export class Renderer {
       const startR = haloR * (1.0 - phase * 0.4);
       const endR   = innerR + (haloR - innerR) * Math.max(0, 0.7 - phase);
       if (endR >= startR - r * 0.5) continue;
-      const swirl = 0.55;
+      const swirl = 0.7;
       const sx = cx + Math.cos(a0) * startR;
       const sy = cy + Math.sin(a0) * startR;
       const ex = cx + Math.cos(a0 + swirl) * endR;
@@ -524,14 +527,52 @@ export class Renderer {
       const midR = (startR + endR) * 0.5;
       const qx = cx + Math.cos(a0 + swirl * 0.5) * midR;
       const qy = cy + Math.sin(a0 + swirl * 0.5) * midR;
-      // Fade in then out across the phase, peaks around phase=0.35.
-      const fade = Math.sin(Math.min(1, Math.max(0, phase)) * Math.PI);
-      ctx.strokeStyle = `hsla(${m.hue}, 78%, 72%, ${0.22 * intensity * fade})`;
-      ctx.lineWidth = Math.max(1, this.dpr * 0.9);
+      // Sin envelope: fades the funnel in then out across its phase so
+      // streams appear and dissolve asynchronously rather than blinking.
+      const fade = Math.sin(phase * Math.PI);
+      if (fade <= 0.02) continue;
+
+      // Wide soft underlay sweep along the same quadratic, just enough
+      // to bind the dust grains into a continuous wisp.
+      ctx.lineWidth = r * 1.4;
+      ctx.strokeStyle = `hsla(${m.hue}, 70%, 60%, ${0.06 * intensity * fade})`;
       ctx.beginPath();
       ctx.moveTo(sx, sy);
       ctx.quadraticCurveTo(qx, qy, ex, ey);
       ctx.stroke();
+
+      // Dust grains sampled along the curve via the quadratic Bézier
+      // formula. Perpendicular jitter (deterministic from seed + i + s)
+      // breaks up the line so the grains read as scattered dust rather
+      // than beads on a string.
+      const samples = 12;
+      for (let s = 0; s < samples; s++) {
+        const u = s / (samples - 1);
+        const om = 1 - u;
+        const bx = om * om * sx + 2 * om * u * qx + u * u * ex;
+        const by = om * om * sy + 2 * om * u * qy + u * u * ey;
+        // Perpendicular unit vector at this curve sample (derivative of
+        // the quadratic, normalized) for jitter direction.
+        const tdx = 2 * om * (qx - sx) + 2 * u * (ex - qx);
+        const tdy = 2 * om * (qy - sy) + 2 * u * (ey - qy);
+        const tdLen = Math.hypot(tdx, tdy) || 1;
+        const pnx = -tdy / tdLen;
+        const pny =  tdx / tdLen;
+        // Deterministic hash → [-1, 1] jitter, scaled by funnel width
+        // (wide at outer, tight at inner).
+        const taper = 1 - u; // 1 outer → 0 macro
+        const h = Math.sin((seed + i * 17.3 + s * 5.71) * 12.9898) * 43758.5453;
+        const j = (h - Math.floor(h)) * 2 - 1;
+        const widthHere = r * (0.25 + 0.95 * taper);
+        const gx = bx + pnx * j * widthHere;
+        const gy = by + pny * j * widthHere;
+        const dotR = (0.7 + 1.5 * taper) * this.dpr;
+        const dotA = 0.22 * intensity * fade * (0.55 + 0.45 * (1 - taper));
+        ctx.fillStyle = `hsla(${m.hue}, 78%, ${72 + 8 * (1 - taper)}%, ${dotA})`;
+        ctx.beginPath();
+        ctx.arc(gx, gy, dotR, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     // 4) Accretion ring — only flares when the macro is actively growing.
