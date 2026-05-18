@@ -548,13 +548,17 @@ export class Renderer {
       const gy = cy + Math.sin(angle) * radius;
 
       // Brightness envelope: faint at the halo edge, peaks mid-fall,
-      // drops out as the grain is absorbed. Inner grains are also a
-      // touch brighter and warmer (heating up as they fall).
+      // drops out as the grain is absorbed. Dust hue is a dusty amber
+      // (independent of macro hue) so it reads against both cool blue
+      // Structures and warm gold Cradles instead of camouflaging into
+      // the body's own glow. Inner grains shift slightly warmer/brighter
+      // as they accelerate (frictional heating).
       const env = Math.sin(phase * Math.PI);
       const dotR = (0.6 + 1.1 * (1 - fall) + r3 * 0.3) * this.dpr;
-      const dotA = 0.22 * intensity * env;
-      const lightness = 70 + 12 * (1 - fall);
-      ctx.fillStyle = `hsla(${m.hue}, 78%, ${lightness}%, ${dotA})`;
+      const dotA = 0.26 * intensity * env;
+      const dustHue = 28 + (1 - fall) * 22 + (r3 - 0.5) * 8;
+      const lightness = 72 + 14 * (1 - fall);
+      ctx.fillStyle = `hsla(${dustHue}, 78%, ${lightness}%, ${dotA})`;
       ctx.beginPath();
       ctx.arc(gx, gy, dotR, 0, TWO_PI);
       ctx.fill();
