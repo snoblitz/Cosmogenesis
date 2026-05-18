@@ -717,6 +717,7 @@ body {
   flex-direction: column;
   gap: 2px;
 }
+#macro-context-menu .mcm-actions[hidden] { display: none; }
 #macro-context-menu .mcm-item {
   display: flex;
   align-items: center;
@@ -759,6 +760,7 @@ body {
   gap: 6px;
   padding: 4px 4px 0;
 }
+#macro-context-menu .mcm-rename[hidden] { display: none; }
 #macro-context-menu .mcm-input {
   width: 100%;
   padding: 7px 9px;

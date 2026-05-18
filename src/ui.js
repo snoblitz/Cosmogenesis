@@ -1004,6 +1004,16 @@ export class UI {
         menu.setAttribute('data-visible', '1');
         // Re-apply the position now that visible scale is 1.
         this._positionContextMenu(this._contextMenuLastX, this._contextMenuLastY);
+        // Once the entrance animation completes, disable the transform
+        // transition so subsequent reflows (rename mode, iOS focus scroll,
+        // etc.) don't make the menu visibly slide.
+        if (this._contextMenuAnchorMode === 'right') {
+          setTimeout(() => {
+            if (this._contextMenuOpen) {
+              menu.style.transition = 'opacity 160ms ease';
+            }
+          }, 260);
+        }
       }
     });
   }
