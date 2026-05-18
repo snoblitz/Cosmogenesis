@@ -1074,6 +1074,39 @@ body {
   justify-content: center;
   transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, transform 0.2s ease;
 }
+/* Quick untrack button on tracked entries. Sits between titles and chevron.
+   Filled gold star; clicking removes the macro from tracking. */
+.catalog-section-list .cat-star {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: -2px 2px -2px 0;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: rgba(255, 215, 130, 0.85);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.catalog-section-list .cat-star svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  filter: drop-shadow(0 0 2px rgba(255, 215, 130, 0.35));
+}
+.catalog-section-list .cat-star:hover {
+  color: #ffe9a5;
+  background: rgba(255, 215, 130, 0.18);
+  border-color: rgba(255, 215, 130, 0.4);
+  transform: scale(1.1);
+}
+.catalog-section-list .cat-star:active {
+  transform: scale(0.9);
+}
 .catalog-section-list .cat-chevron:hover {
   color: #fff;
   background: rgba(184, 164, 255, 0.18);
@@ -1236,6 +1269,80 @@ body {
   opacity: 1;
   stroke-dashoffset: 0;
 }
+
+/* Power (pause/resume) button. Two stacked SVGs; .is-paused on parent li
+   swaps which icon is visible. */
+.cat-emitter-actions .cat-power {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: rgba(220, 200, 170, 0.75);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  position: relative;
+}
+.cat-emitter-actions .cat-power:hover {
+  background: rgba(212, 168, 92, 0.15);
+  color: #fff;
+  border-color: rgba(212, 168, 92, 0.4);
+}
+.cat-emitter-actions .cat-power svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.cat-emitter-actions .cat-power .icon-off { display: none; }
+.cat-emitter.is-paused .cat-power .icon-on { display: none; }
+.cat-emitter.is-paused .cat-power .icon-off { display: block; }
+.cat-emitter.is-paused .cat-power { color: rgba(180, 160, 140, 0.6); }
+
+/* Delete button with confirm step. Trash icon by default; first click adds
+   .is-confirming which swaps in the "Confirm?" label and a red accent. */
+.cat-emitter-actions .cat-trash {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: rgba(220, 200, 170, 0.75);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: 11px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.cat-emitter-actions .cat-trash:hover {
+  background: rgba(220, 110, 110, 0.18);
+  color: #ffd0d0;
+  border-color: rgba(220, 110, 110, 0.45);
+}
+.cat-emitter-actions .cat-trash svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+.cat-emitter-actions .cat-trash .confirm-label { display: none; }
+.cat-emitter-actions .cat-trash.is-confirming {
+  background: rgba(220, 110, 110, 0.25);
+  color: #fff;
+  border-color: rgba(220, 110, 110, 0.6);
+  padding: 0 10px;
+}
+.cat-emitter-actions .cat-trash.is-confirming .icon-trash { display: none; }
+.cat-emitter-actions .cat-trash.is-confirming .confirm-label { display: inline; }
 
 .catalog-empty {
   font-size: 12px;

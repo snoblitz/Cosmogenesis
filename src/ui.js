@@ -339,6 +339,7 @@ export class UI {
     this.onEmitterPauseToggle = null; // (emitterId) => void
     this.onEmitterRemove = null;      // (emitterId) => void
     this.onEmitterVisibilityToggle = null; // (emitterId, hidden) => void
+    this.onCatalogUntrack = null;     // (macroId) => void
     this.onDeployEmitterClick = null; // () => void
     this.getEmitterMenuContext = null; // (emitterId) => { paused }
     this.getToolsContext = null;      // () => tools readout state
@@ -1692,7 +1693,7 @@ export class UI {
         entry = this._buildEmitterEntry(emitter.id);
         this._catalogEmitterNodes.set(emitter.id, entry);
       }
-      const { li, titleEl, subEl, eyeBtn } = entry;
+      const { li, titleEl, subEl, eyeBtn, powerBtn, trashBtn } = entry;
 
       const hidden = !!emitter.hidden;
       const paused = !!emitter.paused;
@@ -1711,6 +1712,19 @@ export class UI {
         eyeBtn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
         eyeBtn.setAttribute('aria-label', hidden ? 'Show emitter' : 'Hide emitter');
         eyeBtn.setAttribute('title', hidden ? 'Show emitter' : 'Hide emitter');
+      }
+      if (powerBtn) {
+        powerBtn.setAttribute('aria-pressed', paused ? 'false' : 'true');
+        powerBtn.setAttribute('aria-label', paused ? 'Resume emitter' : 'Pause emitter');
+        powerBtn.setAttribute('title', paused ? 'Resume emitter' : 'Pause emitter');
+      }
+      if (trashBtn) {
+        trashBtn.setAttribute('aria-label', 'Delete emitter');
+        if (!trashBtn.classList.contains('is-confirming')) {
+          trashBtn.setAttribute('title', 'Delete emitter');
+        } else {
+          trashBtn.setAttribute('title', 'Click again to confirm');
+        }
       }
 
       const nextSibling = prevNode ? prevNode.nextSibling : this.elCatalogDeployedList.firstChild;
@@ -1765,13 +1779,66 @@ export class UI {
       }
     });
 
+    // Power toggle (pause/resume). Two SVG icons stacked, CSS swaps which is
+    // shown based on the .is-paused class on the parent li.
+    const powerBtn = document.createElement('button');
+    powerBtn.type = 'button';
+    powerBtn.className = 'cat-power';
+    powerBtn.innerHTML = `<svg class="icon-on" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M10 3v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M6.5 5.5a5 5 0 1 0 7 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+    </svg><svg class="icon-off" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M10 3v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.5"/>
+      <path d="M6.5 5.5a5 5 0 1 0 7 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" opacity="0.5"/>
+      <line x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>`;
+    powerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof this.onEmitterPauseToggle === 'function') {
+        this.onEmitterPauseToggle(emitterId);
+      }
+    });
+
+    // Delete button with confirm-on-second-click. First click flips the
+    // button into a "Confirm?" state; second click within 3s actually
+    // removes the emitter. Clicking anywhere else (or waiting) reverts.
+    const trashBtn = document.createElement('button');
+    trashBtn.type = 'button';
+    trashBtn.className = 'cat-trash';
+    trashBtn.innerHTML = `<svg class="icon-trash" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M3 6h14M8 3h4a1 1 0 0 1 1 1v2H7V4a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+      <path d="M5 6l1 11a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2l1-11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+      <path d="M9 10v5M11 10v5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    </svg><span class="confirm-label">Confirm?</span>`;
+    let confirmTimer = null;
+    const revertConfirm = () => {
+      trashBtn.classList.remove('is-confirming');
+      if (confirmTimer) { clearTimeout(confirmTimer); confirmTimer = null; }
+    };
+    trashBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (trashBtn.classList.contains('is-confirming')) {
+        revertConfirm();
+        if (typeof this.onEmitterRemove === 'function') {
+          this.onEmitterRemove(emitterId);
+        }
+      } else {
+        trashBtn.classList.add('is-confirming');
+        confirmTimer = setTimeout(revertConfirm, 3000);
+      }
+    });
+    // Also revert if the user blurs / interacts elsewhere on the row.
+    trashBtn.addEventListener('blur', revertConfirm);
+
     actions.appendChild(eyeBtn);
+    actions.appendChild(powerBtn);
+    actions.appendChild(trashBtn);
 
     rowMain.appendChild(titles);
     rowMain.appendChild(actions);
     li.appendChild(rowMain);
 
-    return { li, titleEl, subEl, eyeBtn };
+    return { li, titleEl, subEl, eyeBtn, powerBtn, trashBtn };
   }
 
   _buildCatalogEntry(macroId) {
@@ -1797,7 +1864,26 @@ export class UI {
     chevron.setAttribute('aria-label', 'Toggle history');
     chevron.textContent = '\u25B8'; // ▸
 
+    // Quick untrack ("unstar"). Filled gold star while tracked; clicking
+    // untracks the macro, which removes it from the catalog on the next
+    // frame. No confirm — easy to re-track later from the macro context menu.
+    const starBtn = document.createElement('button');
+    starBtn.type = 'button';
+    starBtn.className = 'cat-star';
+    starBtn.setAttribute('aria-label', 'Untrack macro');
+    starBtn.setAttribute('title', 'Untrack');
+    starBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M10 1.5l2.6 5.3 5.9.85-4.25 4.15 1 5.85L10 14.9 4.75 17.65l1-5.85L1.5 7.65l5.9-.85L10 1.5z"/>
+    </svg>`;
+    starBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof this.onCatalogUntrack === 'function') {
+        this.onCatalogUntrack(macroId);
+      }
+    });
+
     rowMain.appendChild(titles);
+    rowMain.appendChild(starBtn);
     rowMain.appendChild(chevron);
 
     const timelineEl = document.createElement('div');

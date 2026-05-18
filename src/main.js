@@ -161,6 +161,16 @@ ui.onCatalogEntryClick = (id) => {
   inspectorPinId = id;
   inspectorPinSource = 'catalog';
 };
+ui.onCatalogUntrack = (id) => {
+  const m = findMacroById(id);
+  if (!m) return;
+  m.tracked = false;
+  if (inspectorPinId === id && inspectorPinSource === 'catalog') {
+    inspectorPinId = null;
+    inspectorPinSource = null;
+  }
+  state.requestSave?.();
+};
 
 // Visual targets:
 // Thermal overlay alpha target. The overlay (sepia dim + scanlines) shows
