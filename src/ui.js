@@ -246,7 +246,7 @@ const INSTRUMENT_DEFINITIONS = [
       { key: 'visibleBloom', label: 'Star Bloom', min: 0, max: 2.0, step: 0.05, default: 1.0,
         format: (v) => `${Math.round(v * 100)}%`,
         tooltip: 'How much halo glow surrounds bright bodies. Zero gives the sharp pinpoint look of a perfect lens; higher values feel like atmospheric scatter or a long-exposure photo.' },
-      { key: 'visibleDiffractionSpikes', label: 'Diffraction Spikes', type: 'toggle', default: false,
+      { key: 'visibleDiffractionSpikes', label: 'Diffraction Spikes', type: 'toggle', default: true,
         tooltip: 'Cross-shaped spikes on the brightest bodies. Real telescopes with support vanes produce these naturally; toggling them gives the view that classic Hubble-image feel.' }
     ]
   }

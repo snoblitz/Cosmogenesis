@@ -73,7 +73,7 @@ export class GameState {
       thermalShowScale:         true,    // show cold-to-warm temperature legend
       visibleExposure:          1.0,     // visible-spectrum brightness multiplier (0.3..2)
       visibleBloom:             1.0,     // halo/aura radius multiplier on bright bodies (0..2)
-      visibleDiffractionSpikes: false,   // 4-point cross spikes on stars (Hubble-style)
+      visibleDiffractionSpikes: true,    // 4-point cross spikes on stars (Hubble-style)
       cursorStyle:              'crosshair', // pointer style over the canvas
       touchOffsetPx:            0,       // vertical offset (CSS px) lifting touch input above the fingertip
       showTouchPointer:         false,   // render the chosen cursor glyph at the touch location
