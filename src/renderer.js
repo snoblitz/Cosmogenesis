@@ -668,14 +668,15 @@ export class Renderer {
     // heavy bound pairs glow gold across vast distance.
     const hue = filamentHueShort(240, 30, warmth);
 
-    ctx.strokeStyle = `hsla(${hue}, 78%, 68%, ${alpha})`;
-    ctx.lineWidth = 1.4 * this.dpr;
-    ctx.lineCap = 'round';
-
     const t = nowMs / 1000;
     const segs = 24;
     const wobbleScale = Math.min(14, dist * 0.04) * this.dpr;
 
+    // Build the wobbling path once, stroke it twice: a wide soft glow
+    // underneath for legibility (so the thread reads against the dark
+    // background) plus a brighter narrow core on top for definition.
+    // Additive blending ('lighter') means the two passes bloom together
+    // without ever blowing out, so the filament feels luminous, not loud.
     ctx.beginPath();
     for (let s = 0; s <= segs; s++) {
       const u = s / segs;
@@ -688,6 +689,19 @@ export class Renderer {
       if (s === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
+
+    ctx.lineCap = 'round';
+
+    // Outer glow: wide, soft. Roughly 1/3 the alpha of the core so it
+    // reads as bloom, not a second line.
+    ctx.lineWidth = 5 * this.dpr;
+    ctx.strokeStyle = `hsla(${hue}, 85%, 60%, ${alpha * 0.38})`;
+    ctx.stroke();
+
+    // Bright core: thin and saturated. Lightness bumped from 68% → 80%
+    // so the thread itself stays distinct on top of the glow.
+    ctx.lineWidth = 1.4 * this.dpr;
+    ctx.strokeStyle = `hsla(${hue}, 92%, 80%, ${Math.min(0.95, alpha * 1.2)})`;
     ctx.stroke();
   }
 
