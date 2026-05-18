@@ -22,30 +22,24 @@ The "bodies have identities" arc. See [CHANGELOG.md](CHANGELOG.md) for the full 
 
 ---
 
-## v0.3 candidates (next session)
+## ✅ v0.3 — Shipped 2026-05-17
+
+The "First Light + camera + touch" arc. Where v0.2 made bodies feel knowable, v0.3 made the universe easier to see, follow, and physically inhabit. See [CHANGELOG.md](CHANGELOG.md) for the full feature list.
+
+- **Era 5 — First Light**: ignition, audio cue, white-gold aura + ignition burst, reverse-spectrum sweep, `ignited` history event, kind field, auto-rename `Cradle{N}` → `Star{N}`
+- **Manual camera controls**: wheel, drag, pinch, keyboard — plus **Smart Tracking** auto-fit
+- **Inspector leader line**: catalog-only elbow line + smart placement candidate scoring
+- **Macro atmosphere / accretion dust / filament glow**: broader macro presence and better large-scale readability
+- **Touch UX polish**: progress-ring long-press, menu placement fixes
+- **iOS PWA reload help**
+
+---
+
+## v0.4 candidates (next session)
 
 The natural next moves, in rough order of leverage:
 
-### 1. Era 5 — First Light 🔥
-
-The biggest single-feature jump available. The narrative payoff for everything pre-Era-5 is gated on this.
-
-**What it would entail:**
-- Trigger: a cradle (mass ≥ ignition threshold, e.g. 500 or 1000) becomes a **Star**.
-- Visual: the cradle suddenly *emits* light. Concentric expanding luminance rings, dramatic hue shift to bright white/gold, soft halo extending beyond its physical radius.
-- Audio: a grand era cue with overtones. Brighter, more transcendent than Era 3 cue.
-- **Renderer transition**: thermal overlay smoothly fades out (already wired) as the universe becomes truly visible. The bottom-left LENS label updates from "Thermal" to "Visible · Thermal" or just "Visible".
-- **Visible Lens unlock**: appears in Instruments panel with eye icon (or a new icon).
-- New whisper: *"Light. As we know it."* or similar.
-- Reverse-scan animation: a soft bottom-to-top sweep paints the visible spectrum in (mirror of the original thermal reveal).
-- **History event**: ignition adds a new event kind (`ignited`) to the body's timeline.
-- **Auto-rename**: `Cradle{N}` → `Star{N}` on ignition, same rules as Structure → Cradle.
-
-**Mechanical implications:**
-- "Star" as a new entity category? Or just a third mass band on macros? Probably the latter — minimal new types.
-- Stars exert *radiant pressure* (push particles slightly outward at close range)? Optional Tier 3.
-
-### 2. Body lineage polish
+### 1. Body lineage polish
 
 Now that bodies have identity, the catalog could go deeper:
 
@@ -54,7 +48,7 @@ Now that bodies have identity, the catalog could go deeper:
 - **Catalog filters / sort**: filter by kind, sort by age / mass / tracked-time. Useful once players have 20+ tracked bodies.
 - **Catalog export**: a tiny "copy as JSON" or "copy as text summary" for sharing your cosmic family tree.
 
-### 3. Spectrum filter (Phase B)
+### 2. Spectrum filter (Phase B)
 
 When Visible Lens is unlocked, give the player a **lens spectrum selector**: Radio / Infrared / Visible / UV / X-ray. Each shows the same simulation through a different visual treatment.
 
@@ -66,17 +60,17 @@ When Visible Lens is unlocked, give the player a **lens spectrum selector**: Rad
 
 This makes the player *the astronomer*. Choose your wavelength.
 
-### 4. Ambient music layer
+### 3. Ambient music layer
 
 Soft procedural pad underneath the bells, also in A minor pentatonic so it harmonizes with detection sounds. Slow chord progression: i - VI - III - VII (Am - F - C - G) on a 30-second loop, very low volume by default.
 
 Pure synthesis — no audio files. Same Web Audio API. Add to `audio.js` as `playAmbientLayer()` with volume control in global settings.
 
-### 5. Sound on history milestones
+### 4. Sound on history milestones
 
 When a macro crosses the cradle threshold or gets absorbed, play a brief audio marker. Currently history events fire silently in the simulation; pairing them with a subtle sound would let players *hear* their tracked bodies' significant moments without watching the catalog.
 
-### 6. Cradle visual treatment
+### 5. Cradle visual treatment
 
 Cradles look mostly identical to large Structures (just bigger due to mass-radius scaling). The catalog gives them a gold accent; the canvas doesn't. Differentiate:
 - Pulsing extra halo ring
@@ -88,7 +82,7 @@ Easy 30-line addition. High visual reward.
 
 ---
 
-## v0.4+ candidates
+## v0.5+ candidates
 
 ### Era 6, 7, 8...
 
@@ -162,9 +156,9 @@ For clarity, things that came up in discussion and were intentionally set aside:
 ## When picking up after a break
 
 1. Read [DESIGN.md](DESIGN.md) again to re-anchor on principles
-2. Skim [CHANGELOG.md](CHANGELOG.md) to remember what shipped (v0.1, v0.2)
+2. Skim [CHANGELOG.md](CHANGELOG.md) to remember what shipped (v0.1, v0.2, v0.3)
 3. Skim [ARCHITECTURE.md](ARCHITECTURE.md) to refresh the code layout
-4. Pick one v0.3 candidate from above
+4. Pick one v0.4 candidate from above
 5. Before implementing: sketch the design pitch against the four DESIGN.md questions:
    - Is this physically motivated?
    - Does this trust the player?

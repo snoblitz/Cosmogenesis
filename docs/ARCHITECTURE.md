@@ -2,7 +2,7 @@
 
 Technical breakdown of Cosmogenesis. Module-by-module, with the data-flow diagrams and the non-obvious design choices called out.
 
-Current version: **v0.2**. See [CHANGELOG.md](CHANGELOG.md) for the version-by-version feature list.
+Current version: **v0.3**. See [CHANGELOG.md](CHANGELOG.md) for the version-by-version feature list.
 
 ---
 
@@ -62,6 +62,8 @@ frame(now)
 
 The loop is **stateless beyond the persisted state**. Resuming a saved game starts a brand new game loop with the loaded state.
 
+v0.3 adds two more edge-triggered presentation hooks around that core loop: once `eraIndex >= FIRST_LIGHT_ERA`, `main.js` fires `renderer.startVisibleScan()` exactly once per universe and latches `state.visibleScanDone`, mirroring the earlier `thermalScanDone` reveal flow; and camera framing now has its own post-`state.update()` pass, where Smart Tracking can pan + zoom to keep all macros framed unless manual input has set `renderer.cameraOverride`.
+
 ---
 
 ## Simulation layer
@@ -80,35 +82,42 @@ Owns `particles[]`, `macros[]`, and the cosmic timeline. Each tick:
 8. Tries particle-particle merges with **merge tax** (era ≥ 2)
 9. Promotes particles that crossed `MACRO_MASS_THRESHOLD` (25) into macros, OR silently accretes into a containing macro if the particle is inside one (era ≥ 2)
 10. Tries macro-macro merges, pushing an `absorbed` history event on the surviving macro (era ≥ 2)
-11. `_promoteAutoNames()` — rewrites `Structure{N}` → `Cradle{N}` on threshold crossing AND pushes a `cradle` history event (independent of name rewrite, so player-renamed bodies still get the milestone)
+11. `_promoteAutoNames()` — records first cradle crossing via `crossedCradle`, upgrades `kind` from `structure` → `cradle`, rewrites matching auto-names `Structure{N}` → `Cradle{N}`, and pushes a `cradle` history event. The history event is independent of the rename, so player-named bodies still get the milestone.
+12. The same pass ignites cradles that cross `STAR_IGNITION_THRESHOLD` (1500): `kind` becomes permanent `star`, matching auto-names `Cradle{N}` → `Star{N}`, `ignitedAtS` + transient `ignitionAnim` are set, and an `ignited` history event is pushed with `{atS, kind: 'ignited', mass, prevName}`.
 
 **Key constants** at top of file:
 - `MAX_PARTICLES = 1500` — hard ceiling, oldest mass-1 evicted past this
 - `MAX_MACROS = 40` — macro ceiling
 - `MACRO_MASS_THRESHOLD = 25` — particle → macro promotion mass (lowered from 70 in v0.2 to compensate for the merge tax; sequential accretion steady state is ~32 mass at 3% tax)
-- `MACRO_CRADLE_THRESHOLD = 500` — macro → cradle classification (no separate object type, just a mass band)
+- `MACRO_CRADLE_THRESHOLD = 500` — structure → cradle threshold
+- `STAR_IGNITION_THRESHOLD = 1500` — cradle → star ignition threshold; stars never demote even if later mass loss drops them below the line
 - `GRID_SIZE = 90` — spatial partition cell size
 - `YEARS_PER_SECOND = 10` — cosmic-time multiplier for player-facing displays
-- `MAX_MACRO_HISTORY = 50` — cap on per-macro timeline entries; born + cradle events always retained, oldest absorbs trim first
+- `MAX_MACRO_HISTORY = 50` — cap on per-macro timeline entries; born + cradle + ignition milestones always retained, oldest absorbs trim first
 
-**Macro shape** (v0.2):
+**Macro shape** (v0.3):
 ```js
 {
   id, x, y, vx, vy,
   mass, r, hue, age,
   pulse, absorbed,
   bornAtS,         // stable birth anchor in real seconds
+  kind,            // 'structure' | 'cradle' | 'star', persisted in saves
   crossedCradle,   // latch to prevent duplicate cradle history events
+  ignitedAtS,      // stable ignition anchor for stars, null otherwise
+  ignitionAnim,    // transient { startS, duration } burst state
   name,            // string, always present (auto or player-set)
   tracked,         // appears in Catalog if true
-  history          // [{ atS, kind, mass?, targetName? }]
+  history          // [{ atS, kind, mass?, prevName?, targetName? }]
 }
 ```
 
+`kind` replaced the old inline `mass >= threshold ? 'cradle' : 'structure'` checks scattered through the UI/state layer. It is now the permanent semantic identity of the macro: structures can become cradles, cradles can ignite into stars, and stars stay stars.
+
 **Helpers:**
-- `_promoteToMacro(p)` — creates a new macro with auto-name (`{kind}{bornAtYears}`) and an initial `born` or `born-cradle` history event.
+- `_promoteToMacro(p)` — creates a new macro with persisted `kind`, an auto-name (`{kind}{bornAtYears}`), and an initial `born` or `born-cradle` history event.
 - `_macroContaining(x, y)` — returns the macro whose body contains a point, or null. Used to suppress phantom promotions inside an existing macro's gravity well.
-- `_autoNameFor(m)` — recomputes the expected auto-name from `bornAtS`; used by both `setMacroName` (empty input reverts to auto) and `deserialize` (legacy backfill).
+- `_autoNameFor(m)` — recomputes the expected auto-name from `bornAtS` + `kind`; used by both `setMacroName` (empty input reverts to auto) and `deserialize` (legacy backfill).
 - `setMacroName(id, name)` — public API for player rename. Empty input reverts to auto-name (no "unnamed" state).
 - `setMacroTracked(id, bool)` — public API for Catalog tracking.
 - `pickMacroAt(wx, wy, padWorld)` — nearest-hit picker for the inspector / context menu, scaled by zoom in the caller.
@@ -164,6 +173,11 @@ render(sim, state)
 - `screenToWorld(sx, sy)` — internal canvas px → world coords
 - `worldToScreenCss(wx, wy)` — world coords → CSS px (divides by DPR) for DOM positioning
 
+v0.3 extends the renderer with a second one-shot reveal path and star-specific treatment:
+- `startVisibleScan()` — 3.5s bottom-to-top reverse-spectrum sweep with a warm leading edge and cool wake. Triggered once from `main.js` when First Light is reached.
+- Stars render through a dedicated white-gold sprite/tint cache plus a steady aura at `haloR + 2.2*r`, with a slight twinkle keyed by time + macro id.
+- `m.ignitionAnim = { startS, duration }` drives a 2.5s ignition burst: bright flash + three expanding rings with cubic ease-out. The renderer clears only the transient animation object when done; the persistent `m.kind === 'star'` survives.
+
 **Performance notes:**
 
 - **Pre-rendered hue-bucketed sprites** for particle + macro glow. 24 sprites each, baked once in constructor. `drawImage` is ~10× faster than rebuilding a `createRadialGradient` per particle per frame.
@@ -174,9 +188,10 @@ render(sim, state)
 **Camera system:**
 
 - World is `viewport / MIN_ZOOM = viewport × 2.5` (so particles can spread out at low zoom)
-- Camera always centered on world center
-- Zoom lerps slowly toward per-era target (`time constant ~6.7s`)
-- Ambient Lissajous drift + tiny rotation for organic feel
+- Default zoom still lerps toward the current era target, but Smart Tracking can zoom further out (down to 0.3× the era zoom) and pan toward an all-macros fit.
+- Smart Tracking blends bbox center (80%) with a sqrt(mass)-weighted centroid (20%), expands the fit by each macro's visible halo, and lerps the camera with a ~0.9s time constant so the frame settles instead of chasing.
+- Manual wheel / drag / pinch / keyboard camera input flips `renderer.cameraOverride = true`, freezing era-zoom + Smart Tracking writes until the player recenters.
+- Ambient Lissajous drift + tiny rotation still sit on top of the base camera for organic feel.
 
 ### `audio.js`
 
@@ -187,7 +202,7 @@ Pure procedural Web Audio. No files. Lazy `AudioContext` creation on first user 
 1. **Particle bell** (`_playBell(mass)`) — soft sine, 80ms attack, ~0.8-2.0s decay. Mass picks pitch on log scale across 4 octaves of A minor pentatonic.
 2. **Structure pad** (`_playStructure(mass)`) — triangle + sub-sine + slow vibrato. 320ms attack, 3.5-6.5s decay. For macros and cradles.
 3. **Filament drone** (`detectedFilament(combinedMass)`) — sine fundamental + perfect fifth + LFO vibrato. 1.6s attack, 7.5s decay. Fired once per new filament pair.
-4. **Era cue** (`playEraCue(N)`) — currently wired for Era 3: stacked A minor chord across 4 octaves, 2.4-3.2s attacks, 10-13s decays. Future eras add their own cues to this dispatch.
+4. **Era cue** (`playEraCue(N)`) — dispatch table for cosmological milestones. Era 3 still fires the stacked A-minor emergence pad; Era 5 now fires `_playFirstLightCue()`: three triangle-wave bells (A5, C6, E6) with 0.4s attack / 6.4s decay and 90ms stagger, filtered through a 900Hz → 4200Hz lowpass sweep over 1s, over an A3 + E3 sine pad that blooms for ~8s.
 
 **Throttling** prevents overload during busy scans: `minBellIntervalMs = 45`, `minStructureIntervalMs = 150`.
 
@@ -220,9 +235,13 @@ Each returns `{ wrap, apply }` where `apply(value)` sets state + DOM + fires `on
 
 **Conditional rows**: stat rows with class `stat-conditional` are hidden by default and reveal once their metric crosses zero. Used for Structures, Cradles, Filaments.
 
-**Macro inspector** (v0.2):
-- `setMacroInspector(data | null)` — read-only display of a body's stats. `data` carries `{id, name, kind, mass, absorbed, age, filaments, screenX, screenY, macroRadiusCss, pinned, hint}`. Position updated each frame via `translate3d` (no layout thrash). Cached width/height; re-measure on content change.
-- Always writes the name even when fallback-displaying ("Structure"/"Cradle"), so no stale-text bug from previous bodies.
+**Macro inspector** (v0.3):
+- `setMacroInspector(data | null)` — read-only display of a body's stats. `data` carries `{id, name, kind, mass, absorbed, age, filaments, screenX, screenY, macroRadiusCss, pinned, hint, source}`. Position updated each frame via `translate3d` (no layout thrash). Cached width/height; re-measure on content change.
+- Always writes the name even when fallback-displaying ("Structure"/"Cradle"/"Star"), so no stale-text bug from previous bodies.
+- `_positionInspector()` now scores **8 anchor candidates** (right/left/top/bottom + diagonals) each call. Score = clamp distance penalty (`×0.25`) + live UI overlap penalty (`×600 / panelArea`) + macro-proximity penalty (`×4` inside `macroR + 16`), with tie bias right > left > vertical > diagonal.
+- `_collectInspectorAvoidRects()` pulls fresh `getBoundingClientRect()` data from the active HUD panels / chrome each call (`hud-left`, `hud-top-right`, `hud-bottom`, `hud-catalog`, `settings-panel`, chrome buttons, discovery banner, context menu, info tooltip), so placement stays correct as the UI reflows.
+- `#inspector-leader` is a fixed SVG polyline with 3 points (macro center → elbow → panel corner). `_positionInspectorLeader()` forces a corner entry (`panelTop + 24` or `panelBottom - 24`, near-side edge) so the bend stays visible even when body and panel are vertically aligned. Stroke matches the panel border (`rgba(184, 164, 255, 0.78)`).
+- The leader is gated by `inspectorPinSource === 'catalog'` in `main.js`: catalog pins draw the line, viewport hover/tap pins do not.
 
 **Context menu** (v0.2):
 - `showMacroContextMenu({macroId, screenX, screenY, kind, name, tracked})` — pops the menu at the requested point, stashes the macroId + name so subsequent rename pre-fill reads from the menu's own state (not from the inspector DOM, which might be showing a different body).
@@ -230,10 +249,10 @@ Each returns `{ wrap, apply }` where `apply(value)` sets state + DOM + fires `on
 - Document-level pointerdown handler in capture phase: if menu is open and click is outside, close + stopPropagation + preventDefault. Prevents click-outside from also spawning a particle on the canvas.
 - Callbacks set by main.js: `onMacroRename(id, name)`, `onMacroTrackToggle(id, bool)`.
 
-**Catalog** (v0.2):
+**Catalog** (v0.3):
 - `renderCatalog(sim, pinnedId, cradleThreshold)` — runs every frame. Filters tracked macros, sorts cradles-first then by mass desc, diffs against `_catalogNodes` (Map: macroId → entry handles).
 - Each catalog entry is built once by `_buildCatalogEntry(macroId)`. Returns `{li, titleEl, subEl, timelineEl}`. The title row click pins; the chevron click toggles `_catalogExpanded` (Set of macroIds).
-- `_renderTimelineInto(container, m)` cheaply diffs the history → DOM. `absorbed` events use structured DOM (textNode + name span + tombstone span + suffix textNode) to allow the inline SVG glyph next to the body's name; other event kinds use plain `textContent`.
+- `_renderTimelineInto(container, m)` cheaply diffs the history → DOM. `absorbed` events use structured DOM (textNode + name span + tombstone span + suffix textNode) to allow the inline SVG glyph next to the body's name; `ignited` events get their own highlighted timeline row; other event kinds use plain `textContent`.
 - Pointer-events: the whole #hud-catalog panel must opt back in with `pointer-events: auto` because the parent #ui inherits `pointer-events: none` so the canvas underneath stays interactive.
 
 **Year counter** (v0.2):
@@ -251,7 +270,7 @@ Single source of truth. Owns:
 - **Counters**: `potential`, `matter`, `structures`, `cradles`, `filaments`, `maxParticleMass`, `cosmicYear`
 - **Era progression**: `eraIndex`, `eraEnteredAt`, `laws` (string array of discovered laws)
 - **Whisper system**: `seenWhispers` (Set), `pendingWhisper`, `_whisperCooldownUntil`
-- **Lens state**: `radioLensActive`, `lensVisuallyActive`, `thermalScanDone`
+- **Lens state**: `radioLensActive`, `lensVisuallyActive`, `thermalScanDone`, `visibleScanDone`
 - **Settings**: `settings.{...}` (all user-tunable per-instrument + global)
 - **Discovery banner queue**: `pendingDiscoveries`
 
@@ -262,12 +281,12 @@ Single source of truth. Owns:
 4. Evaluate whispers via `findReadyWhisper()` — gated by cooldown + prerequisite (opening-radio AND opening-thermal must be seen before non-opening whispers)
 5. If any of the above mutated significantly, call `requestSave` (set by main.js → triggers immediate persistence)
 
-`serialize()` + `deserialize()` shape (v0.2):
+`serialize()` + `deserialize()` shape (v0.3):
 
 ```
 {
   potential, eraIndex, laws, seenWhispers (array), eraEnteredAt,
-  radioLensActive, lensVisuallyActive, thermalScanDone,
+  radioLensActive, lensVisuallyActive, thermalScanDone, visibleScanDone,
   settings: { radioSweepPeriod, radioVolume, ... }
 }
 ```
@@ -278,19 +297,22 @@ Plus on the sim side:
 {
   particles: [...],
   macros: [...{id, x, y, vx, vy, mass, r, hue, age, pulse, absorbed,
-               bornAtS, crossedCradle, name, tracked, history}],
+               bornAtS, kind, crossedCradle, ignitedAtS, ignitionAnim,
+               name, tracked, history}],
   nextId, eraLevel, totalMerges, totalSpawned, totalElapsedS
 }
 ```
+
+The save envelope is unchanged (`VERSION = 2` in `save.js`); v0.3's additions ride on the sim payload rather than introducing a new top-level shape.
 
 ### `eras.js`
 
 Pure data + the `evaluateEra()` predicate. Each era has:
 - `name`, `law`, `lawTooltip`, `eraTooltip`, `hint`, `zoom`
 
-13 eras defined. 5 wired up (0-4). 8 reserved.
+13 eras defined. 6 wired up (0-5). 7 reserved.
 
-`evaluateEra(state, sim)` returns the next era index if progression triggers, else `null`. **All gates are physical state, never wall-clock time.** The universe progresses when the universe has done enough, not when a timer says it's allowed.
+`evaluateEra(state, sim)` returns the next era index if progression triggers, else `null`. **All gates are physical state, never wall-clock time.** The universe progresses when the universe has done enough, not when a timer says it's allowed. In v0.3, Era 5 (`FIRST_LIGHT_ERA`) advances when `sim.macros.some(m => m.kind === 'star')`.
 
 ### `whispers.js`
 
@@ -310,6 +332,8 @@ Three localStorage keys:
 - `cosmogenesis` — the actual save (versioned, `VERSION = 2`)
 - `cosmogenesis_freshUntil` — timestamp until which loads return null (post-reset window, 5 min)
 - (legacy) `voidBloom`, `voidBloom_freshUntil`, `voidBloom_muted` — migrated on first load, then deleted
+
+v0.3 does **not** bump the outer save version. The localStorage envelope stays the same; `simulation.js` simply serializes richer macro records (`kind`, `ignitedAtS`, `ignitionAnim`, `crossedCradle`) and backfills them on load for older universes.
 
 ---
 
@@ -350,6 +374,16 @@ else                     → hover-pick macro at screenPos, show or hide
 - **M** → toggle audio mute (ignored when focus is in a text input — so typing M while renaming doesn't mute)
 - **Escape** → close context menu (if open)
 
+### Camera controls (v0.3)
+
+Still owned by `main.js`, layered on top of the spawn/pin gesture model rather than split into a separate controller.
+
+- **Wheel zoom** is cursor-anchored: `userZoomAt()` samples the world point before + after the zoom step and offsets the camera so the point under the cursor stays fixed.
+- **Pan** supports middle-click drag, `Space` + left-drag, two-finger pan, and arrow-key nudges.
+- **Pinch zoom** uses the two-touch midpoint as the anchor and composes pan-first then zoom, so the camera tracks the fingers instead of fighting them.
+- **Keyboard zoom / recenter**: `+` and `-` zoom around screen center; `0` recenters. The right-rail **Recenter View** button in `index.html` does the same thing.
+- Any manual camera input sets `renderer.cameraOverride = true`, which disables era zoom + Smart Tracking writes until the player recenters.
+
 ---
 
 ## Coordinate systems
@@ -374,12 +408,15 @@ This lets the dev/player iterate on the opening sequence freely without their un
 
 ## Legacy save migration
 
-v0.2 backfills the following on `sim.deserialize` for any save written by an earlier build:
+v0.3 backfills the following on `sim.deserialize` for any save written by an earlier build:
 - `totalElapsedS` defaults to 0 if missing
 - `m.bornAtS` defaults to `max(0, totalElapsedS - age)` if missing
+- `m.kind` is derived from mass thresholds for legacy saves: `star` at `STAR_IGNITION_THRESHOLD`, else `cradle` at `MACRO_CRADLE_THRESHOLD`, else `structure`
 - `m.name` defaults to `_autoNameFor(m)` if missing
-- `m.crossedCradle` defaults to `mass >= MACRO_CRADLE_THRESHOLD` so the cradle event doesn't re-fire on load
 - `m.history` defaults to `[{atS, kind: born | born-cradle, mass}]` if missing or empty; events with unknown `kind` get filtered out
+- Star backfill synthesizes `ignited` history + `ignitedAtS` if a legacy macro is already above the ignition threshold
+- `m.crossedCradle` defaults to true for existing cradles/stars so the cradle event doesn't re-fire on load
+- `m.ignitionAnim` defaults to `null` unless a save was captured mid-burst
 
 The state-side `cosmogenesis` localStorage key is unchanged; the new fields ride on the sim shape.
 
@@ -394,17 +431,19 @@ The state-side `cosmogenesis` localStorage key is unchanged; the new fields ride
 | 2 | 2 | particle merging + macro promotion + macro-macro merging |
 | 3 | 3 | macro→particle pull at full strength (was 0.55× before) |
 | 4 | 4 | macro→macro mutual attraction (Tier 2 cosmic web cohesion) |
+| 5 | 5 | no new core-force law; First Light presentation state becomes reachable once any macro's persisted `kind` is `star` |
 
 Renderer + UI also gate on `eraIndex`:
 - Filaments draw at era ≥ 4
 - Thermal overlay scales with `lensVisuallyActive` (currently gated by opening-thermal whisper, post tap-100)
-- Era 5+ would gate the Visible Lens unlock + ignition mechanic (not yet wired)
+- Era 5+ switches the lens label from **Thermal** to **Visible**, fires the one-shot visible scan, and dispatches the First Light audio cue
+- The macro inspector + catalog still gate on `lensVisuallyActive` (you can't inspect what you can't see)
 
-The macro inspector + catalog gate on `lensVisuallyActive` (you can't inspect what you can't see).
+Star ignition itself is physical, not UI-driven: `simulation.js` promotes `kind === 'cradle'` to `kind === 'star'` when mass crosses `STAR_IGNITION_THRESHOLD`, and `eras.js` simply observes that fact.
 
 ---
 
-## What's NOT in v0.2
+## What's NOT in v0.3
 
 For reference when picking this up later:
 

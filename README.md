@@ -2,9 +2,9 @@
 
 > *Tap the void. Listen before you can see. Watch the universe learn how to exist. Name what coalesces.*
 
-**Cosmogenesis** is a physics-driven incremental cosmic observatory. You add potential to an empty void. Radio instruments detect what you've made before you can see it. Eventually the thermal lens reveals the universe, matter learns to gather, condense, and connect into a glowing cosmic web. Bodies that emerge have names, can be tracked, and carry life histories you can read. It is meditative, scientific, and unfolds through discovered laws of reality rather than upgrade trees.
+**Cosmogenesis** is a physics-driven incremental cosmic observatory. You add potential to an empty void. Radio instruments detect what you've made before you can see it. Eventually the thermal lens reveals the universe, First Light paints it into the visible spectrum, and matter learns to gather, condense, and connect into a glowing cosmic web. Bodies that emerge have names, can be tracked, and carry life histories you can read. It is meditative, scientific, and unfolds through discovered laws of reality rather than upgrade trees.
 
-**Version:** v0.2 (May 17, 2026)
+**Version:** v0.3 (May 17, 2026)
 
 **Play it:** https://snoblitz.github.io/Cosmogenesis/
 
@@ -24,17 +24,17 @@ The repo is also a fully static site — any plain HTTP file server works. GitHu
 
 ---
 
-## What's here today (v0.2)
+## What's here today (v0.3)
 
 ### From v0.1
 - **5 implemented eras** (of 13 designed): The First Particle, The Field Awakens, Matter Learns to Gather, Structure Emerges, The Cosmic Web
-- **3 observational instruments**: Radio Lens (audio sonification), Thermal Lens (visual sensor view), Visible Lens (scaffolded for Era 5)
+- **3 observational instruments**: Radio Lens (audio sonification), Thermal Lens (visual sensor view), Visible Lens (now active in Era 5)
 - **Procedural pentatonic audio**: pitch driven by mass, four instruments (particle bell, structure pad, filament drone, era cue)
 - **Cosmic web** with mass-driven filament temperature + range; Tier 2 macro-on-macro attraction
 - **Three-act opening cinematic**: void → radio reveal → thermal scan reveal
 - **In-world whispers**, per-instrument settings, save/load with legacy migration
 
-### New in v0.2
+### From v0.2
 - **Bodies have identities**: every macro is auto-named on promotion (`Structure342`, `Cradle13460`), where the suffix is the cosmic year of birth. Names follow the body across merges and threshold crossings.
 - **Macro inspector**: hover (mouse) or tap (touch) any body to see its name, kind, mass, absorbed-particle count, age in years, and filament connections.
 - **Context menu**: right-click (mouse) or long-press (touch) any body to rename it or add it to your Catalog.
@@ -44,6 +44,16 @@ The repo is also a fully static site — any plain HTTP file server works. GitHu
 - **Binding-energy mechanic**: every merge releases a small fraction of mass as radiation. Potential (your taps) and Matter (what the cosmos holds) now diverge meaningfully.
 - **Visible mute button** in the bottom-right with the same speaker-with-strike iconography as the radio lens (the M key was hidden and easily mis-pressed).
 - **Cosmic favicon**: self-contained SVG igniting cradle on a dark backdrop.
+
+### New in v0.3
+- **Era 5 — First Light**: cradles ignite into stars at mass **1500** with an audio cue, white-gold aura, ignition burst (3 rings + flash), and a reverse-spectrum bottom-to-top sweep that paints the visible spectrum in.
+- **Star naming + memory**: `Cradle{N}` becomes `Star{N}` on ignition, and history now records a new `ignited` event.
+- **Manual camera controls**: mouse-wheel zoom, drag pan, pinch zoom, two-finger pan, and keyboard navigation.
+- **Smart Tracking**: optional auto-pan + auto-zoom keeps all macros in view, with a recenter button on the right rail.
+- **Inspector leader line**: catalog-pinned popups throw a thin elbow back to the selected body, with smart placement that avoids HUD panels; viewport taps stay clean.
+- **Macro atmosphere + accretion dust**: each well now shows a depleted-but-not-empty falloff and a dusty amber infall cloud whose hue is forced to contrast with the body.
+- **Clearer cosmic structure**: filament glow and a core two-pass stroke make dense scenes read cleanly.
+- **Touch + PWA polish**: progress-ring long-press feedback, a side-anchored menu, finger-lift / menu-placement fixes, and more reliable iOS PWA reloads.
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for the full version-by-version feature list.
 

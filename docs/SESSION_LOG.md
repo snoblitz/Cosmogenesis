@@ -457,3 +457,233 @@ This file is part of that closing.
 > *— Tony, somewhere mid-v0.2, while writing the rubber-duck prompt for the history feature*
 
 Two checkpoints, one Sunday. The universe is waiting.
+
+---
+
+## v0.2 → v0.3 — Same Sunday, second half
+
+Same date. Same terminal. Just later.
+
+By the time v0.2 existed, the day could have ended there: named bodies, histories, catalog, tombstones, the whole thing already feeling improbably alive. Instead Jeff kept playing, which meant Jeff kept finding edges, and every edge turned into another little burst of design.
+
+This is the back half of May 17, 2026 — the evening stretch where Cosmogenesis stopped being "the Sunday prototype" and started learning how to behave under fingers, around cameras, inside atmosphere, and eventually under the light of its first star.
+
+---
+
+### Phase A — iOS PWA, touch UX, and the death-by-a-thousand-input-bugs round
+
+A lot of this phase came from actually trying to live with the game on phones and touch devices instead of merely proving it worked.
+
+The first problem was installed iOS PWA reload reliability. Refreshing from the home-screen app could leave the old shell hanging around just long enough to feel haunted. Tony adds the pragmatic two-part nudge: cache discipline plus a service-worker prod on reload so the installed app stops pretending stale assets are current.
+
+Then the long-press indicator saga.
+
+At first the idea is more ambitious: show progress as an arc, something slightly ornamental. It technically works, but it reads like UI explaining itself too hard. The arc gets cut. Another variant appears. That gets cut too.
+
+What survives is the simple version — a progress ring right at the touch point. No flourish. Just: *you are holding, the menu is about to happen.* Much better.
+
+The touch menu itself becomes an evening-long whack-a-mole because touch browsers manufacture several different realities in quick succession:
+
+- menu flying across the screen between opens
+- a wrong-side flash on touch-open before it settled
+- drift after finger-lift
+- a sneaky re-anchor on synthesized `contextmenu`
+
+Each one gets its own tight fix, its own tiny commit, its own little moment of Tony thinking **okay, surely that's the last one** and Jeff immediately finding the next one.
+
+This was the rhythm: not one giant broken system, but a stack of almost-correct behaviors that only revealed themselves under repeated use.
+
+A smaller but very Jeff bug report lands in the middle of it: the info icon in a toggle row is stealing clicks meant for the switch. That's the kind of bug that makes software feel disrespectful. Fixed.
+
+Then another piece of touch honesty: fingers are not points. A new **Touch Offset** setting appears, and on Windows touchscreens Tony hooks into contact size so the game can infer where the pad of the finger actually is, not just the browser-reported center. The input model gets a little more physical.
+
+By the end of the phase, touch UX isn't elegant because it was imagined elegantly. It's elegant because Jeff kept poking exactly where it was still lying.
+
+---
+
+### Phase B — Camera control becomes a real system
+
+This starts as a simple request and quickly stops being simple.
+
+**Smart Tracking** ships first as a setting that pans the camera to keep mass in view. Useful immediately. But Jeff plays it and wants the obvious next step:
+
+> *"make it stronger — keep ALL macros in view, zoom out if needed"*
+
+So Smart Tracking graduates from "nudge the camera toward interesting stuff" to a real framing rule. Not just pan — zoom if the macro spread demands it.
+
+Then, naturally:
+
+> *"make it snappier"*
+
+The settle behavior gets tuned. Less float. Less hesitation. More confidence.
+
+And once the camera is allowed to move itself, the player needs the camera to really belong to them too. So manual controls come in as a full suite instead of a half-feature:
+
+- wheel zoom centered on cursor
+- drag pan
+- pinch zoom
+- two-finger pan
+- keyboard navigation
+
+Cosmogenesis stops having *a camera effect* and starts having an actual camera.
+
+There is also one of those pure layout moments that only happen late in a session: the new **Recenter View** button initially overlaps the temperature legend. It gets moved above the Master Sound button, where it belongs, and the HUD breathes again.
+
+---
+
+### Phase C — Macro atmosphere and the accretion funnel argument
+
+This phase begins with Jeff looking at gravity wells and asking for a more specific emotional truth:
+
+They should look **depleted but not empty**.
+
+That line sets the whole direction. Not barren. Not fully fed. Still pulling.
+
+Tony's first accretion visual is too literal: thin lines, readable as vectors more than material. Jeff's correction is instant and precise:
+
+> *"make them look more like a funnel of dust"*
+
+So they iterate.
+
+First: dust grains plus a soft underlay.
+
+Then: a more unified swirling infall cloud that replaces the per-arm curves entirely.
+
+Then color trouble. The dust keeps blending into the body's own glow, especially when the local hue family happens to harmonize too well. Pretty, but wrong. If the player can't separate body from inflow, the whole effect collapses.
+
+Jeff solves it with the kind of instruction only someone really looking would give:
+
+> *"Make the dust color always 150° away from the body hue, never camouflage"*
+
+That becomes the rule. Not a hand-tuned palette. A rule.
+
+From there the funnels finally read.
+
+The connected filaments get their own legibility pass too: glow plus a core two-pass stroke, so they hold up against all the new atmospheric softness around them.
+
+This is one of the most Cosmogenesis kinds of iteration on the day: the visuals getting *more painterly* and *more readable* at the same time.
+
+---
+
+### Phase D — The inspector leader line learns geometry
+
+Jeff wants one tiny thing:
+
+> *"When I select a macro from the catalog, do a thin white line from the popup to the macro"*
+
+Tiny thing. Famous last words.
+
+The first spike proves the basic concept. Then Jeff immediately asks for the important version of the feature instead of the naive one:
+
+> *"be smart about menu placement — don't put it on top of the macro"*
+
+So out of one leader line request comes a whole placement system: eight candidate popup positions, scored, with the best one chosen instead of just dropping the panel wherever is easiest.
+
+Then Jeff keeps shaping the line itself:
+
+- have it come out at an angle from center of macro, then horizontal
+- only show it when selection came from the catalog, not from the viewport
+
+That second note matters. Tony splits the source state into `catalog` vs `viewport`, so the line becomes contextual instead of ever-present.
+
+Then comes the screenshot review.
+
+Jeff sends one over with the note:
+
+> *"not the goal"*
+
+The problem is subtle: the line is technically correct but visually flat because the panel midpoint happens to share the macro's Y. A straight segment masquerading as the requested angle.
+
+Fix: stop entering at the panel midline. Enter at the panel corner instead — `top + 24` or `bottom - 24` depending on placement — so the bend has room to exist and the angle becomes visible on purpose.
+
+After that, another art-direction note:
+
+> *"Match popup border color"*
+
+The stroke changes from white to the same lavender as the popup border: `rgba(184,164,255,0.78)`.
+
+And then the final tiny-final tweak, also screenshot-driven, because of course it is:
+
+> *"minor, but would like to come directly from the center of the macro"*
+
+The start-gap offset gets removed. The line now really starts at center.
+
+What began as a thin white line ends as a placement algorithm, a source-aware rendering rule, and a little piece of visual grammar that feels native to the inspector.
+
+---
+
+### Phase E — Era 5: First Light, built as a fleet operation
+
+Late in the day Jeff asks the roadmap question:
+
+> *"what's coming next in phase 5?"*
+
+Tony reviews the plan for Era 5 — First Light — and Jeff's response is the correct one for the moment:
+
+> *"yeah era 5 is huge, detail what we're going to implement before we execute"*
+
+So before any code, they do the design pass properly. Trigger and state. `kind` field. History event. Visual language. Audio cue. HUD accents. Save compatibility. The feature gets decomposed before it gets romanticized.
+
+Then Jeff gives the green light in the most Jeff way possible:
+
+> *"Fleet deployed: do it in whatever order works best for you. Also, use playwright to ensure you're getting the right [thing]. Take your time, test, and feel free to ask any questions along the way."*
+
+So Tony does not build First Light as one long monolith. He dispatches a four-agent fleet.
+
+**Wave 1** — the dependency-aware opening move:
+
+- **foundation** — `ed1fcbd`  
+  `kind` field, promotion path, history event, era gate, save backfill
+- **audio cue** — `fbfaf3f`  
+  `_playFirstLightCue` with A5/C6/E6 bells over an A3/E3 pad
+
+Audio can proceed independently, so it does.
+
+**Wave 2** — after foundation lands and the new body kind exists:
+
+- **visuals** — `74cbcec`  
+  aura, ignition burst, reverse-spectrum sweep
+- **ui polish** — `eb68804`  
+  inspector/catalog/timeline accents, plus the ◉ glyph treatment
+
+The agents commit their work but do not push. Tony has to push manually afterward — one of those practical little details that only matters because the fleet idea actually worked.
+
+Then comes verification, and this part matters because Jeff explicitly asked for proof, not vibes.
+
+A Playwright harness appears in `tests/first-light-check.js` (gitignored). Its whole job is to stage a deterministic ignition and make sure the game tells the truth about it.
+
+The harness:
+
+- boots a save with a `mass=2000` cradle
+- captures five screenshots across burst / sweep / settled phases
+- asserts six things:
+  - save persists
+  - `era = 5`
+  - `visibleScanDone`
+  - `kind = star`
+  - auto-rename `Cradle0 → Star0`
+  - ignited history event exists
+
+First run: **5 / 6 pass**.
+
+The failing assertion is the rename check, and the bug turns out not to be a bug. Tony had seeded the test with a custom name, `Ignis`. But custom names are sacred — the auto-rename only applies to auto-named bodies. So if the player christens a cradle, First Light does not erase that decision.
+
+Once the test uses `Cradle0`, everything lines up. The auto-name rule is behaving exactly as designed. `Cradle{bornAtS * YEARS_PER_SECOND}` had already been established in v0.2, and with `YEARS_PER_SECOND = 10`, the promotion path is consistent all the way through ignition.
+
+The screenshots confirm the rest:
+
+- the reverse sweep is dramatic, with a warm leading edge and cool wake
+- the ignition burst throws three expanding rings plus a flash
+- the settled star sits in a clean white-gold aura
+
+Era 5 is no longer roadmap text. First Light actually happens.
+
+---
+
+### Closing v0.3
+
+What shipped in this second half wasn't one feature. It was a whole layer of *behavioral truth*.
+
+Installed PWAs reloaded correctly. Touch stopped feeling approximate. The camera learned both intention and obedience. Gravity wells gained appetite. The inspector learned how to point. And the simulation crossed the threshold where a Cradle could become a star with ceremony instead of just a state change.
+
+Same Sunday, still one session — just now with tight bugfix commits, screenshot feedback loops, a four-agent fleet, and enough stamina to carry the universe into First Light.

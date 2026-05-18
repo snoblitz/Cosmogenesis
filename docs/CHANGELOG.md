@@ -4,6 +4,68 @@ All notable changes to Cosmogenesis. Versioning follows roughly [Semantic Versio
 
 ---
 
+## v0.3.0 — *2026-05-17 (continued — same Sunday, evening)* — First Light + Camera + Touch
+
+From v0.2 to v0.3, Cosmogenesis crossed a line: bodies stopped merely *becoming trackable* and started becoming luminous destinations. The evening pass turned Cradles into Stars, gave the player a real manual camera, and made touch interaction feel deliberate instead of provisional.
+
+### First Light
+
+- **Stars are now a first-class macro kind**: every macro carries persistent `kind` metadata in save data — `structure | cradle | star` — instead of inferring the top tier loosely from mass at render time.
+- **Ignition threshold**: `STAR_IGNITION_THRESHOLD = 1500`. The moment a cradle crosses that mass, it permanently becomes a Star.
+- **Auto-rename on ignition**: auto-named bodies flip from `Cradle{N}` → `Star{N}` when they ignite. Player-renamed bodies keep their chosen name; ignition changes the kind, not authorship.
+- **New history milestone**: `ignited` events record `prevName` plus the body's mass at ignition, so the timeline preserves both the physical crossing and the identity shift.
+- **Era progression** now advances to **Era 5** as soon as any macro has `kind === 'star'`.
+- **First Light cue**: `_playFirstLightCue()` layers A5 / C6 / E6 triangle bells with **0.4s attack**, **6.4s decay**, and **90ms** stagger; a lowpass opens **900 → 4200Hz** over **1s** while an A3 + E3 sine pad holds underneath for **8s**.
+- **Ignition burst**: Stars don't simply switch state — they erupt in a **2.5s** white-gold flash with **3 expanding rings** eased by cubic-out.
+- **Visible scan reveal**: `startVisibleScan()` plays a one-time **3.5s** reverse-spectrum sweep, bottom-to-top, as the mirror image of the original thermal reveal — warm edge leading, cooler wake trailing.
+- **Persistence mirrors the thermal lens path**: `visibleScanDone` now rides in state and save data alongside `thermalScanDone`, so First Light stays a once-per-universe event.
+
+### Star identity in the UI
+
+- Inspector, catalog, and timeline now speak Star as a distinct category, with warm white-gold accents beyond the cradle palette.
+- Timeline copy for ignition reads as a named milestone rather than a raw threshold crossing:
+```
+YEAR 18,420
+Ignited as Star (+1,500 mass)
+```
+- The Visible Lens instrument now carries a `◉` glyph, matching its role as the era of actual light rather than just inference.
+- Renderer adds a steady white-gold aura to each star at `haloR + 2.2×r`, with a restrained twinkle so stars feel alive without turning into UI markers.
+
+### Camera, tracking, and inspector placement
+
+- **Manual camera controls** finally sit on top of the old ambient drift: mouse-wheel zoom centers on the cursor, drag pans the world, keyboard navigation adds arrow-key motion plus zoom keys, and touch gets pinch-to-zoom with two-finger pan.
+- **Recenter View** moved to the right rail above **Master Sound**, where it belongs as a camera command instead of floating over the temperature legend.
+- **Smart Tracking** is now an optional setting (`smartTracking`) that gently auto-pans and auto-zooms to keep all macros in frame. Fit behavior was retuned to converge faster, then relax into a steadier hold.
+- **Inspector placement** is now scored across **8 candidate anchors** — right, left, top, bottom, and 4 diagonals — using penalties for viewport clamping, overlap with live UI rects, and covering the macro itself.
+- Tie-break bias deliberately prefers **right > left > vertical > diagonal**, so placement feels stable instead of jitter-random.
+- UI avoidance uses fresh `getBoundingClientRect()` reads each reposition, so the inspector respects the real current footprint of HUD, settings, catalog, banners, and context menus.
+- **Catalog-pinned leader line**: when the inspector was opened by clicking a catalog row (and only then), an SVG elbow line now points back to the body in-world.
+- The leader is gated by `inspectorPinSource` (`'catalog' | 'viewport'`), drawn as a 3-point polyline (macro center → elbow → panel corner), forced to keep a visible bend even in near-vertical alignments, and tinted to the panel border's lavender `rgba(184,164,255,0.78)` with a faint glow.
+
+### Macro rendering and accretion readability
+
+- Each gravity well now carries a depleted-but-not-empty atmospheric falloff, so macros still feel like they have an envelope after heavy feeding.
+- Filaments render as a two-pass **glow + core** stroke instead of a single thin line, making the web readable against both dark background and warmer macro neighborhoods.
+- Accretion visuals were rebuilt: the old thin feeding lines are gone, replaced by dust-grain funnels with a soft underlay.
+- Infall dust is now rendered as a swirling cloud around the body rather than per-arm linework, which reads better at motion and at small size.
+- Dust color is a dedicated dusty amber, not a lazy reuse of the body's own hue.
+- To prevent camouflage, dust hue is guaranteed to sit **150° away** from the macro's hue on the wheel.
+
+### Touch interaction grows up
+
+- **Long-press affordance** was iterated into a subtle progress ring at the touch point during the **550ms** hold. The earlier arc-style indicator is gone.
+- A visible touch pointer now anchors the context menu off to the side instead of letting the menu jump wildly between consecutive opens.
+- **Touch Offset** was added as a setting so spawned matter can appear clear of the fingertip on occluding devices.
+- Windows touchscreens now use contact size to detect actual finger contact more reliably.
+- Fixed a side-selection flash where the menu could briefly open on the wrong side before correcting.
+- Fixed menu drift after finger-lift, and the touch path now correctly respects `[hidden]` rows in the action list.
+- Fixed synthetic `contextmenu` on finger-lift from re-anchoring a menu that was already placed.
+- Fixed toggle-row hit behavior so the switch itself owns the toggle; the info icon no longer steals the click.
+
+### Reliability polish
+
+- Installed iOS PWAs now get a firmer nudge to pick up fresh builds, using cache-busting plus service-worker-style reload pressure so updates land more reliably outside Safari.
+
 ## v0.2.0 — *2026-05-17 (later same day)* — Bodies have identities
 
 Same Sunday as v0.1. Where v0.1 gave you a cosmos that evolves, v0.2 gives you a cosmos full of named, trackable, observable bodies with life stories. The simulation didn't change much; the *relationship* between player and bodies did.
