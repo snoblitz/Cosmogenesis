@@ -210,12 +210,13 @@ const INSTRUMENT_DEFINITIONS = [
     id: 'thermal-lens',
     label: 'Thermal Lens',
     icon: 'eye',
-    // Available from the opening-thermal whisper through First Light. Once
-    // the universe ignites into visible spectrum, the same physical lens is
-    // relabelled as the Visible Lens (which shares the lensVisuallyActive
-    // flag), so the Thermal entry is retired to avoid two entries fighting
-    // over the same toggle.
-    earned: (state) => state.seenWhispers && state.seenWhispers.has('opening-thermal') && state.eraIndex < FIRST_LIGHT_ERA,
+    // Once earned (via opening-thermal whisper), Thermal Lens stays in the
+    // panel forever. Post-First-Light it auto-toggles off in favor of the
+    // Visible Lens (cinematic handoff), but the player can flip back to
+    // thermal observation any time — real astronomers use multiple sensor
+    // modes. The Instruments panel is the player's earned toolkit; nothing
+    // gets retired by progression.
+    earned: (state) => state.seenWhispers && state.seenWhispers.has('opening-thermal'),
     toggleable: true,
     settings: [
       { key: 'thermalDimAmount',         label: 'Dimming',           min: 0, max: 1.5, step: 0.05, default: 1.0,

@@ -87,12 +87,12 @@ export const MIN_ZOOM = 0.40;
 export const FIRST_LIGHT_ERA = 5;
 
 // True when the universe is in the visible-spectrum regime (post-First-Light
-// AND the visual lens is on). Centralized so every renderer/UI path that
+// AND the visible lens is on). Centralized so every renderer/UI path that
 // needs to switch between thermal and visible color logic asks the same
 // question with the same definition. Adding a new caller that hardcodes
 // the two-condition check is a smell.
 export function isVisibleSpectrum(state) {
-  return !!(state && state.eraIndex >= FIRST_LIGHT_ERA && state.lensVisuallyActive);
+  return !!(state && state.eraIndex >= FIRST_LIGHT_ERA && state.visibleLensActive);
 }
 
 // Lens label shown in the HUD. Eventually this becomes a user-selectable

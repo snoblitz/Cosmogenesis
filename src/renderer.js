@@ -328,8 +328,10 @@ export class Renderer {
       this._drawRadioScan(W, H, spikeIntensity, beamWidth, lineOpacity);
     }
 
-    // Pre-thermal: foreground/starfield/thermal stay invisible.
-    const lensActive = !!(state && state.lensVisuallyActive);
+    // Visible universe (starfield/foreground/macros/filaments) draws only
+    // when at least one visual lens is active. Thermal and Visible each
+    // count; if both are off, we're listening to radio but not looking.
+    const lensActive = !!(state && (state.lensVisuallyActive || state.visibleLensActive));
     if (!lensActive) {
       return;
     }

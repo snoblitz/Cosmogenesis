@@ -37,13 +37,23 @@ export class GameState {
 
     // Lens system:
     //   - radioLensActive:    audio + sweep line are running
-    //   - lensVisuallyActive: thermal visuals are running
-    //   - thermalScanDone:    has the dramatic one-time reveal scan played?
-    // Both `*Active` flags are toggleable by the player once unlocked.
-    // `thermalScanDone` ensures toggling thermal off/on doesn't re-trigger
-    // the cinematic top-to-bottom reveal sweep on every flip.
+    // Lens system:
+    //   - radioLensActive:    audio + sweep line are running
+    //   - lensVisuallyActive: THERMAL lens visuals are running (sepia overlay
+    //                          + scanlines + thermal-palette body colors)
+    //   - visibleLensActive:  VISIBLE-spectrum lens is running (no overlay,
+    //                          blackbody body colors). Earned at First Light.
+    //   - thermalScanDone:    has the dramatic one-time thermal reveal played?
+    //   - visibleScanDone:    has the dramatic one-time First Light reveal played?
+    //
+    // Thermal + Visible are mutually exclusive when rendering — the player
+    // is looking through one filter at a time. The Instruments panel keeps
+    // BOTH entries forever once earned, so the player can toggle between
+    // observation modes. At First Light we auto-flip Thermal→off / Visible→on
+    // as the cinematic handoff; afterward the player owns the choice.
     this.radioLensActive = false;
     this.lensVisuallyActive = false;
+    this.visibleLensActive = false;
     this.thermalScanDone = false;
     this.visibleScanDone = false;
 
@@ -77,9 +87,6 @@ export class GameState {
   canToggleLens(id) {
     if (id === 'radio-lens')   return this.seenWhispers.has('opening-radio');
     if (id === 'thermal-lens') return this.seenWhispers.has('opening-thermal');
-    // Visible Lens shares the underlying lensVisuallyActive flag with Thermal,
-    // but only becomes the player-facing toggle once First Light has occurred.
-    // Before that, "Thermal Lens" is the label; after, "Visible Lens" is.
     if (id === 'visible-lens') return this.eraIndex >= FIRST_LIGHT_ERA;
     return false;
   }
@@ -88,16 +95,31 @@ export class GameState {
   isLensEnabled(id) {
     if (id === 'radio-lens')   return !!this.radioLensActive;
     if (id === 'thermal-lens') return !!this.lensVisuallyActive;
-    if (id === 'visible-lens') return !!this.lensVisuallyActive;
+    if (id === 'visible-lens') return !!this.visibleLensActive;
     return false;
   }
 
-  // Flip a lens on or off. No-op if the lens isn't unlocked yet.
+  // True when any non-audio sensor is on. The renderer gates the entire
+  // visual universe (particles, macros, filaments) on this — if both
+  // thermal and visible are off, you see only the radio sweep + ripples.
+  anyVisualLensActive() {
+    return !!(this.lensVisuallyActive || this.visibleLensActive);
+  }
+
+  // Flip a lens on or off. No-op if the lens isn't unlocked yet. Thermal
+  // and Visible are mutually exclusive at render time — toggling one ON
+  // auto-toggles the other OFF so they never disagree.
   toggleLens(id) {
     if (!this.canToggleLens(id)) return false;
-    if (id === 'radio-lens')   this.radioLensActive    = !this.radioLensActive;
-    if (id === 'thermal-lens') this.lensVisuallyActive = !this.lensVisuallyActive;
-    if (id === 'visible-lens') this.lensVisuallyActive = !this.lensVisuallyActive;
+    if (id === 'radio-lens') {
+      this.radioLensActive = !this.radioLensActive;
+    } else if (id === 'thermal-lens') {
+      this.lensVisuallyActive = !this.lensVisuallyActive;
+      if (this.lensVisuallyActive) this.visibleLensActive = false;
+    } else if (id === 'visible-lens') {
+      this.visibleLensActive = !this.visibleLensActive;
+      if (this.visibleLensActive) this.lensVisuallyActive = false;
+    }
     if (this.requestSave) this.requestSave();
     return this.isLensEnabled(id);
   }
@@ -108,10 +130,9 @@ export class GameState {
 
   lensLabel() {
     const labels = [];
-    if (this.radioLensActive) labels.push('Radio');
-    if (this.lensVisuallyActive) {
-      labels.push(this.eraIndex >= FIRST_LIGHT_ERA ? 'Visible' : 'Thermal');
-    }
+    if (this.radioLensActive)   labels.push('Radio');
+    if (this.lensVisuallyActive) labels.push('Thermal');
+    if (this.visibleLensActive) labels.push('Visible');
     return labels.join(' \u00b7 ');
   }
 
@@ -159,6 +180,11 @@ export class GameState {
       // synchronous with their dramatic visual event, not 35s later. Right
       // now this is only First Light, but the pattern can extend.
       if (prevEra < FIRST_LIGHT_ERA && this.eraIndex >= FIRST_LIGHT_ERA) {
+        // Auto-handoff: thermal lens hands the visual reins to the visible
+        // lens. The player can toggle either back on whenever; this is
+        // just the cinematic moment of switching modes for them.
+        this.lensVisuallyActive = false;
+        this.visibleLensActive = true;
         const w = WHISPERS.find(x => x.id === 'first-light');
         if (w && !this.seenWhispers.has(w.id)) {
           this.pendingWhisper = w;
@@ -192,6 +218,7 @@ export class GameState {
       eraEnteredAt: this.eraEnteredAt,
       radioLensActive:    this.radioLensActive,
       lensVisuallyActive: this.lensVisuallyActive,
+      visibleLensActive:  this.visibleLensActive,
       thermalScanDone:    this.thermalScanDone,
       visibleScanDone:    this.visibleScanDone,
       settings:           { ...this.settings }
@@ -208,8 +235,21 @@ export class GameState {
     this.eraEnteredAt = d.eraEnteredAt || 0;
     this.radioLensActive    = !!d.radioLensActive;
     this.lensVisuallyActive = !!d.lensVisuallyActive;
+    this.visibleLensActive  = !!d.visibleLensActive;
     this.thermalScanDone    = !!d.thermalScanDone;
     this.visibleScanDone    = !!d.visibleScanDone;
+
+    // Migration: saves written before the visibleLensActive field existed
+    // had `lensVisuallyActive` doing double duty post-First-Light. If we're
+    // resuming in a post-First-Light universe with thermal flagged on but
+    // no explicit visible flag, infer the auto-handoff: visible was meant
+    // to be the active one.
+    if (d.visibleLensActive === undefined &&
+        this.eraIndex >= FIRST_LIGHT_ERA &&
+        this.lensVisuallyActive) {
+      this.lensVisuallyActive = false;
+      this.visibleLensActive = true;
+    }
     if (d.settings && typeof d.settings === 'object') {
       Object.assign(this.settings, d.settings);
     }

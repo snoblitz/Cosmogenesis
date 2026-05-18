@@ -105,15 +105,13 @@ ui.onCatalogEntryClick = (id) => {
 };
 
 // Visual targets:
-//   - Before the lens is revealed: clean bright universe, no overlay.
-//   - Lens revealed, era < First Light: thermal overlay active.
-//   - Era >= First Light: thermal fades out, universe in visible spectrum.
+// Thermal overlay alpha target. The overlay (sepia dim + scanlines) shows
+// whenever the Thermal Lens is on, regardless of era. Pre-First-Light this
+// is the default visual mode. Post-First-Light the auto-handoff turns
+// Thermal off in favor of Visible — but if the player toggles Thermal
+// back on (it's still an earned instrument), the overlay returns.
 function computeThermalTarget() {
-  const lensActive = state.lensVisuallyActive;
-  const ignited    = state.eraIndex >= FIRST_LIGHT_ERA;
-  if (!lensActive) return 0.0;
-  if (!ignited)    return 1.0;
-  return 0.0;
+  return state.lensVisuallyActive ? 1.0 : 0.0;
 }
 
 // --- Canvas sizing & world bounds ---
@@ -267,10 +265,11 @@ function tickHold() {
   requestAnimationFrame(tickHold);
 }
 
-// Inspector visibility is gated by the thermal lens being active: if you
-// can't see macros, you can't inspect them.
+// Inspector visibility is gated by ANY visual lens being active: if you
+// can't see macros (radio alone isn't a visual sensor), you can't inspect.
+// Either Thermal or Visible qualifies.
 function inspectorAllowed() {
-  return !!state.lensVisuallyActive;
+  return !!(state.lensVisuallyActive || state.visibleLensActive);
 }
 
 // Effective hit-test padding in world units. We pad in CSS px and convert.
