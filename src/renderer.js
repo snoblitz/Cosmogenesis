@@ -308,6 +308,10 @@ export class Renderer {
     for (const p of sim.particles) this._drawParticle(p, z);
     // Filaments draw under macros so macro halos anchor the web visually.
     if (state && state.eraIndex >= 4) this._drawFilaments(sim);
+    // Per-macro atmosphere (cleared halo + orbiters + feeding streams +
+    // accretion ring) draws between the diffuse particle field and the
+    // bright macro core, so the macro still reads as the focal point.
+    for (const m of sim.macros)    this._drawMacroAtmosphere(m, t);
     for (const m of sim.macros)    this._drawMacro(m);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
@@ -439,6 +443,152 @@ export class Renderer {
     const sprite = this.macroSprites[this._hueIndex(m.hue, MACRO_HUE_BUCKETS)];
     ctx.globalAlpha = 1;
     ctx.drawImage(sprite, m.x - glowR, m.y - glowR, glowR * 2, glowR * 2);
+  }
+
+  // ---- Macro atmosphere ----
+  //
+  // Visual language: the region immediately around a major gravity well
+  // should look *depleted but not empty*. We layer four ingredients:
+  //   1. A faint dusty halo (additive radial gradient annulus) marking the
+  //      cleared zone — center is "the void", outer rim has settled dust.
+  //   2. A handful of small trapped orbiters circling the macro.
+  //   3. Thin curved feeding streams curling inward from the halo edge.
+  //   4. A bright tilted accretion ring that flares when the macro has
+  //      recently absorbed mass (decays with a ~2.5s time constant).
+  //
+  // All four scale with mass via `intensity` so weak Structures get a hint
+  // while massive Cradles get the full treatment.
+  _drawMacroAtmosphere(m, tSec) {
+    const ctx = this.ctx;
+    // Ramp in from mass 50 → 500. Below 50 the macro is too small to
+    // visually justify a halo; above 500 we cap intensity.
+    const intensity = Math.min(1, Math.max(0, ((m.mass || 0) - 50) / 450));
+    if (intensity <= 0) return;
+
+    const cx = m.x;
+    const cy = m.y;
+    const r = m.r * this.dpr;
+    const innerR = r * 2.1;
+    const haloR  = r * 7.0;
+    const seed = (m.id || 0) * 0.737;
+
+    // 1) Cleared halo — annular dust glow. Transparent at center (the
+    // depleted void), peaks at mid-radius, fades to transparent outside.
+    const dustA = 0.10 * intensity;
+    const halo = ctx.createRadialGradient(cx, cy, innerR, cx, cy, haloR);
+    halo.addColorStop(0.0,  `hsla(${m.hue}, 55%, 35%, 0)`);
+    halo.addColorStop(0.4,  `hsla(${m.hue}, 60%, 50%, ${dustA * 0.45})`);
+    halo.addColorStop(0.72, `hsla(${m.hue}, 65%, 58%, ${dustA})`);
+    halo.addColorStop(1.0,  `hsla(${m.hue}, 60%, 55%, 0)`);
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2) Trapped orbiters — small bright dots circling at orbit radius,
+    // alternating direction so the field doesn't read as a single rigid
+    // rotation. Slight perspective squash on Y.
+    const orbiterCount = 2 + Math.floor(intensity * 4); // 2..6
+    const orbitR = r * 2.8;
+    for (let i = 0; i < orbiterCount; i++) {
+      const dir = (i % 2 === 0) ? 1 : -1;
+      const baseA = seed + i * (Math.PI * 2 / orbiterCount);
+      const angle = baseA + tSec * (0.45 + 0.15 * (i % 3)) * dir;
+      const wobble = 1 + Math.sin(tSec * 1.7 + i) * 0.07;
+      const ox = cx + Math.cos(angle) * orbitR * wobble;
+      const oy = cy + Math.sin(angle) * orbitR * wobble * 0.88;
+      const dotR = (0.9 + 0.4 * (i % 2)) * this.dpr;
+      ctx.fillStyle = `hsla(${m.hue}, 80%, 82%, ${0.55 * intensity})`;
+      ctx.beginPath();
+      ctx.arc(ox, oy, dotR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 3) Feeding streams — short curved filaments curling inward from
+    // the halo edge toward the macro. Each stream has its own phase so
+    // they appear and fade asynchronously, giving the impression of
+    // continuous infall.
+    const streamCount = 3 + Math.round(intensity * 2); // 3..5
+    ctx.lineCap = 'round';
+    for (let i = 0; i < streamCount; i++) {
+      const a0 = seed * 1.3 + i * (Math.PI * 2 / streamCount) + tSec * 0.06;
+      const phase = ((tSec * 0.22 + i * 0.41 + seed * 0.5) % 1);
+      const startR = haloR * (1.0 - phase * 0.4);
+      const endR   = innerR + (haloR - innerR) * Math.max(0, 0.7 - phase);
+      if (endR >= startR - r * 0.5) continue;
+      const swirl = 0.55;
+      const sx = cx + Math.cos(a0) * startR;
+      const sy = cy + Math.sin(a0) * startR;
+      const ex = cx + Math.cos(a0 + swirl) * endR;
+      const ey = cy + Math.sin(a0 + swirl) * endR;
+      const midR = (startR + endR) * 0.5;
+      const qx = cx + Math.cos(a0 + swirl * 0.5) * midR;
+      const qy = cy + Math.sin(a0 + swirl * 0.5) * midR;
+      // Fade in then out across the phase, peaks around phase=0.35.
+      const fade = Math.sin(Math.min(1, Math.max(0, phase)) * Math.PI);
+      ctx.strokeStyle = `hsla(${m.hue}, 78%, 72%, ${0.22 * intensity * fade})`;
+      ctx.lineWidth = Math.max(1, this.dpr * 0.9);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.quadraticCurveTo(qx, qy, ex, ey);
+      ctx.stroke();
+    }
+
+    // 4) Accretion ring — only flares when the macro is actively growing.
+    // The growth glow decays exponentially so a single absorption event
+    // leaves a satisfying afterglow rather than a single-frame flash.
+    const grow = this._macroGrowGlow(m, tSec);
+    if (grow > 0.02) {
+      const ringR = r * 2.0;
+      const ringW = r * 0.55;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(seed); // stable per-macro tilt
+      ctx.scale(1, 0.42);
+      const ring = ctx.createRadialGradient(0, 0, ringR - ringW, 0, 0, ringR + ringW);
+      const hueWarm = m.hue + 25;
+      ring.addColorStop(0.0, `hsla(${hueWarm}, 90%, 70%, 0)`);
+      ring.addColorStop(0.5, `hsla(${hueWarm}, 95%, 75%, ${0.6 * grow * intensity})`);
+      ring.addColorStop(1.0, `hsla(${hueWarm}, 85%, 62%, 0)`);
+      ctx.fillStyle = ring;
+      ctx.beginPath();
+      ctx.arc(0, 0, ringR + ringW, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Track per-macro growth glow (driven by changes in m.absorbed). Returns
+  // a 0..1 intensity that ramps up on absorption events and decays with a
+  // ~2.5s time constant. State lives in renderer (not sim) so it never
+  // touches save/load.
+  _macroGrowGlow(m, tSec) {
+    if (!this._macroGrowth) this._macroGrowth = new Map();
+    const id = m.id;
+    if (id == null) return 0;
+    let entry = this._macroGrowth.get(id);
+    const absorbed = m.absorbed || 0;
+    if (!entry) {
+      entry = { lastAbsorbed: absorbed, glow: 0, lastT: tSec };
+      this._macroGrowth.set(id, entry);
+      // Opportunistic prune to bound the map size (macros can be merged).
+      // Keep the most recently inserted entries; older glow state for
+      // departed macros costs only a few bytes but we cap it anyway.
+      if (this._macroGrowth.size > 80) {
+        const keep = Array.from(this._macroGrowth.entries()).slice(-60);
+        this._macroGrowth = new Map(keep);
+      }
+      return 0;
+    }
+    const dt = Math.max(0, Math.min(0.1, tSec - entry.lastT));
+    entry.lastT = tSec;
+    const delta = absorbed - entry.lastAbsorbed;
+    if (delta > 0) {
+      entry.glow = Math.min(1, entry.glow + delta * 0.045);
+      entry.lastAbsorbed = absorbed;
+    }
+    entry.glow *= Math.exp(-dt / 2.5);
+    return entry.glow;
   }
 
   // ---- Cosmic Web filaments (Era 4+) ----
