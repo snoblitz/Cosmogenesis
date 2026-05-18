@@ -19,6 +19,7 @@ const MACRO_HUE_BUCKETS    = 24;
 const MACRO_SPRITE_PX      = 256;
 
 const SCAN_DURATION_S = 2.5;
+const VISIBLE_SCAN_DURATION_S = 3.5;
 const RADIO_SWEEP_PERIOD_S = 8.0;     // full left-to-right pass duration
 const RADIO_DETECT_TOLERANCE_PX = 6;  // half-width of the detection zone
 
@@ -27,6 +28,16 @@ const RADIO_DETECT_TOLERANCE_PX = 6;  // half-width of the detection zone
 function filamentHueShort(a, b, t) {
   const diff = ((((b - a) % 360) + 540) % 360) - 180;
   return (((a + diff * t) % 360) + 360) % 360;
+}
+
+function easeOutCubic(t) {
+  const u = Math.max(0, Math.min(1, t));
+  return 1 - Math.pow(1 - u, 3);
+}
+
+function smoothstep(t) {
+  const u = Math.max(0, Math.min(1, t));
+  return u * u * (3 - 2 * u);
 }
 
 export class Renderer {
@@ -61,6 +72,10 @@ export class Renderer {
     this.scanActive = false;
     this.scanProgress = 1.0; // 1.0 = no scan needed / scan already completed
 
+    // First Light reverse-spectrum sweep, a one-shot bottom-to-top reveal.
+    this.visibleScanActive = false;
+    this.visibleScanProgress = 1.0;
+
     // --- Radio lens state ---
     // Gated on state.radioLensActive. The sweep line travels left to right
     // every RADIO_SWEEP_PERIOD_S seconds. When it crosses a particle/macro,
@@ -88,6 +103,7 @@ export class Renderer {
     // Sprite caches (built once)
     this.particleSprites = this._makeParticleSprites();
     this.macroSprites    = this._makeMacroSprites();
+    this.starMacroSprite = this._makeStarMacroSprite();
   }
 
   setDPR(dpr) {
@@ -111,6 +127,12 @@ export class Renderer {
     if (this.scanActive) return;
     this.scanActive = true;
     this.scanProgress = 0.0;
+  }
+
+  startVisibleScan() {
+    if (this.visibleScanActive) return;
+    this.visibleScanActive = true;
+    this.visibleScanProgress = 0.0;
   }
 
   // Kept for API compatibility with main.js, no longer drives rendering,
@@ -213,6 +235,29 @@ export class Renderer {
     return sprites;
   }
 
+  _makeStarMacroSprite() {
+    const S = MACRO_SPRITE_PX;
+    const half = S / 2;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const cx = c.getContext('2d');
+    const halo = cx.createRadialGradient(half, half, 0, half, half, half);
+    halo.addColorStop(0.0, 'hsla(50, 96%, 92%, 0.98)');
+    halo.addColorStop(0.16, 'hsla(46, 92%, 82%, 0.62)');
+    halo.addColorStop(0.48, 'hsla(38, 88%, 62%, 0.2)');
+    halo.addColorStop(1.0, 'hsla(32, 82%, 54%, 0)');
+    cx.fillStyle = halo;
+    cx.fillRect(0, 0, S, S);
+    const coreR = S * 0.09;
+    const core = cx.createRadialGradient(half, half, 0, half, half, coreR);
+    core.addColorStop(0, 'hsla(50, 28%, 99%, 1)');
+    core.addColorStop(0.45, 'hsla(48, 52%, 98%, 0.98)');
+    core.addColorStop(1, 'hsla(46, 48%, 96%, 0)');
+    cx.fillStyle = core;
+    cx.fillRect(0, 0, S, S);
+    return c;
+  }
+
   _hueIndex(hue, n) {
     return Math.floor((((hue % 360) + 360) % 360) / 360 * n) % n;
   }
@@ -235,10 +280,14 @@ export class Renderer {
     this.thermalAlpha += (this.targetThermalAlpha - this.thermalAlpha) * kFast;
     const z = this.zoom;
 
-    // Advance scan reveal animation.
+    // Advance scan reveal animations.
     if (this.scanActive) {
       this.scanProgress = Math.min(1.0, this.scanProgress + dt / SCAN_DURATION_S);
       if (this.scanProgress >= 1.0) this.scanActive = false;
+    }
+    if (this.visibleScanActive) {
+      this.visibleScanProgress = Math.min(1.0, this.visibleScanProgress + dt / VISIBLE_SCAN_DURATION_S);
+      if (this.visibleScanProgress >= 1.0) this.visibleScanActive = false;
     }
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -315,7 +364,7 @@ export class Renderer {
     // Per-macro atmosphere (cleared halo + orbiters + feeding streams +
     // accretion ring) draws between the diffuse particle field and the
     // bright macro core, so the macro still reads as the focal point.
-    for (const m of sim.macros)    this._drawMacroAtmosphere(m, t);
+    for (const m of sim.macros)    this._drawMacroAtmosphere(m, t, sim.totalElapsedS);
     for (const m of sim.macros)    this._drawMacro(m);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
@@ -323,8 +372,10 @@ export class Renderer {
     ctx.restore();
     ctx.restore(); // end scan clip
 
-    // --- Thermal lens overlay (screen-space, gated spatially by scanProgress) ---
-    if (this.thermalAlpha > 0.01) {
+    // --- Screen-space lens overlays ---
+    if (this.visibleScanActive && this.visibleScanProgress < 1.0) {
+      this._drawVisibleScan(W, H);
+    } else if (this.thermalAlpha > 0.01) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalCompositeOperation = 'source-over';
 
@@ -369,6 +420,41 @@ export class Renderer {
         this._drawTemperatureScale(W, H, a);
       }
     }
+  }
+
+  _drawVisibleScan(W, H) {
+    const ctx = this.ctx;
+    const raw = Math.max(0, Math.min(1, this.visibleScanProgress));
+    const eased = smoothstep(raw);
+    const edgeY = H * (1 - eased);
+    const aheadH = Math.max(0, Math.ceil(edgeY));
+    const halo = Math.max(56, Math.round(72 * this.dpr));
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+
+    if (aheadH > 0) {
+      const warmth = ctx.createLinearGradient(0, 0, 0, aheadH);
+      warmth.addColorStop(0.0, 'rgba(255, 176, 116, 0.16)');
+      warmth.addColorStop(0.7, 'rgba(255, 148, 96, 0.11)');
+      warmth.addColorStop(1.0, 'rgba(255, 132, 84, 0.06)');
+      ctx.fillStyle = warmth;
+      ctx.fillRect(0, 0, W, aheadH);
+    }
+
+    const grad = ctx.createLinearGradient(0, edgeY - halo, 0, edgeY + halo);
+    grad.addColorStop(0.0, 'rgba(255, 178, 98, 0)');
+    grad.addColorStop(0.28, 'rgba(255, 190, 118, 0.28)');
+    grad.addColorStop(0.5, 'rgba(255, 245, 225, 0.5)');
+    grad.addColorStop(0.72, 'rgba(172, 224, 255, 0.18)');
+    grad.addColorStop(1.0, 'rgba(134, 208, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, edgeY - halo, W, halo * 2);
+
+    const barH = Math.max(2, Math.round(2 * this.dpr));
+    ctx.fillStyle = 'rgba(255, 248, 232, 0.88)';
+    ctx.fillRect(0, edgeY - barH * 0.5, W, barH);
+    ctx.globalAlpha = 1;
   }
 
   // Bottom-left cold-to-warm hue legend. Hues match the actual particle warming
@@ -444,9 +530,70 @@ export class Renderer {
     const pulse = 1 + Math.sin(m.pulse * 1.6) * 0.08;
     const r = m.r * this.dpr * pulse;
     const glowR = r * 5;
-    const sprite = this.macroSprites[this._hueIndex(m.hue, MACRO_HUE_BUCKETS)];
+    const sprite = (m.kind === 'star')
+      ? this.starMacroSprite
+      : this.macroSprites[this._hueIndex(m.hue, MACRO_HUE_BUCKETS)];
     ctx.globalAlpha = 1;
     ctx.drawImage(sprite, m.x - glowR, m.y - glowR, glowR * 2, glowR * 2);
+  }
+
+  _drawStarAura(m, tSec, haloR) {
+    const ctx = this.ctx;
+    const baseR = m.r * this.dpr;
+    const outerR = haloR + baseR * 2.2;
+    const pulse = 1 + 0.06 * Math.sin(tSec * Math.PI * 2 * 0.7 + (m.id || 0) * 0.37);
+    const halo = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, outerR);
+    halo.addColorStop(0.0, `hsla(50, 96%, 92%, ${0.55 * pulse})`);
+    halo.addColorStop(0.2, `hsla(48, 94%, 90%, ${0.35 * pulse})`);
+    halo.addColorStop(0.62, `hsla(42, 88%, 76%, ${0.12 * pulse})`);
+    halo.addColorStop(1.0, 'hsla(38, 82%, 70%, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, outerR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  _drawIgnitionBurst(m, simTimeS) {
+    const anim = m.ignitionAnim;
+    if (!anim) return;
+    const elapsed = simTimeS - anim.startS;
+    if (elapsed >= anim.duration) {
+      m.ignitionAnim = null;
+      return;
+    }
+    if (elapsed < 0) return;
+
+    const ctx = this.ctx;
+    const u = Math.max(0, Math.min(1, elapsed / anim.duration));
+    const eased = easeOutCubic(u);
+    const fade = 1 - u;
+    const baseR = m.r * this.dpr;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    const flash = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, baseR * 3);
+    flash.addColorStop(0.0, `hsla(50, 100%, 98%, ${0.85 * fade})`);
+    flash.addColorStop(0.32, `hsla(46, 96%, 90%, ${0.45 * fade})`);
+    flash.addColorStop(1.0, 'hsla(40, 92%, 76%, 0)');
+    ctx.fillStyle = flash;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, baseR * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    for (let i = 0; i < 3; i++) {
+      const ringScale = 1 + i * 0.6;
+      const ringR = baseR * ringScale * eased * 5;
+      if (ringR <= 0.01) continue;
+      const ringFade = Math.max(0, fade * (1 - i * 0.14));
+      ctx.lineWidth = (3 - 2.5 * u) * this.dpr;
+      ctx.strokeStyle = `hsla(${48 - i * 3}, 96%, 88%, ${0.9 * ringFade})`;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
   }
 
   // ---- Macro atmosphere ----
@@ -462,7 +609,7 @@ export class Renderer {
   //
   // All four scale with mass via `intensity` so weak Structures get a hint
   // while massive Cradles get the full treatment.
-  _drawMacroAtmosphere(m, tSec) {
+  _drawMacroAtmosphere(m, tSec, simTimeS) {
     const ctx = this.ctx;
     // Ramp in from mass 50 → 500. Below 50 the macro is too small to
     // visually justify a halo; above 500 we cap intensity.
@@ -593,6 +740,9 @@ export class Renderer {
       ctx.fill();
       ctx.restore();
     }
+
+    if (m.kind === 'star') this._drawStarAura(m, tSec, haloR);
+    if (m.ignitionAnim) this._drawIgnitionBurst(m, simTimeS);
   }
 
   // Track per-macro growth glow (driven by changes in m.absorbed). Returns

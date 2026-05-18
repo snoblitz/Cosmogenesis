@@ -853,6 +853,11 @@ function frame(now) {
     state.thermalScanDone = true;
     if (state.requestSave) state.requestSave();
   }
+  if (state.eraIndex >= FIRST_LIGHT_ERA && !state.visibleScanDone) {
+    renderer.startVisibleScan?.();
+    state.visibleScanDone = true;
+    if (state.requestSave) state.requestSave();
+  }
   _prevLensActive = state.lensVisuallyActive;
 
   // Edge-trigger era audio cues on forward transitions only. Resumed saves
