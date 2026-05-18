@@ -301,9 +301,15 @@ export class UI {
     this.elInspectorLeader = document.getElementById('inspector-leader');
     this.elInspectorLeaderLine = this.elInspectorLeader?.querySelector('polyline') || null;
     this.elCatalogPanel  = document.getElementById('hud-catalog');
-    this.elCatalogList   = document.getElementById('catalog-list');
+    this.elCatalogTrackedList   = document.getElementById('catalog-tracked-list');
+    this.elCatalogDeployedList  = document.getElementById('catalog-deployed-list');
+    this.elCatalogTrackedSection  = this.elCatalogTrackedList?.closest('.catalog-section') || null;
+    this.elCatalogDeployedSection = this.elCatalogDeployedList?.closest('.catalog-section') || null;
     this._catalogNodes   = new Map();   // macroId -> { li, titleEl, subEl, timelineEl }
+    this._catalogEmitterNodes = new Map(); // emitterId -> { li, titleEl, subEl, eyeBtn }
     this._catalogExpanded = new Set();   // macroIds whose timeline is open
+    this._catalogSectionCollapsed = new Set();  // 'tracked' | 'deployed'
+    this._wireCatalogSectionHeaders();
     this._inspectorVisible = false;
     this._inspectorWidth = 0;
     this._inspectorHeight = 0;
@@ -332,6 +338,7 @@ export class UI {
     this.onMacroTrackToggle  = null;  // (macroId, nextTracked) => void
     this.onEmitterPauseToggle = null; // (emitterId) => void
     this.onEmitterRemove = null;      // (emitterId) => void
+    this.onEmitterVisibilityToggle = null; // (emitterId, hidden) => void
     this.onDeployEmitterClick = null; // () => void
     this.getEmitterMenuContext = null; // (emitterId) => { paused }
     this.getToolsContext = null;      // () => tools readout state
@@ -1519,28 +1526,91 @@ export class UI {
     }
   }
 
-  // Build / refresh the Catalog panel. Lists every macro with `tracked=true`.
-  // Each entry shows the player-given name (or a "Kind #id" fallback), a
-  // subtitle with kind + current mass, and click-pins the inspector to it.
-  // Re-uses DOM nodes between frames so it's cheap to call every frame.
+  // Build / refresh the Catalog panel. Has two collapsible subsections:
+  // "Tracked" (macros the player has pinned/tracked) and "Deployed" (emitters
+  // the player has placed). The panel is hidden entirely until at least one
+  // section has content. Re-uses DOM nodes between frames so it's cheap to
+  // call every frame.
   renderCatalog(sim, pinnedId, cradleThreshold) {
-    if (!this.elCatalogList || !this.elCatalogPanel || !sim) return;
+    if (!this.elCatalogPanel || !sim) return;
 
     const tracked = [];
     for (const m of sim.macros) if (m.tracked) tracked.push(m);
+    const emitters = Array.isArray(sim.emitters) ? sim.emitters.slice() : [];
 
-    // Hide the whole panel until the player tracks something. Keeps the HUD
-    // clean for new players.
-    const want = tracked.length > 0;
+    // Sort emitters by id so order is stable across renders.
+    emitters.sort((a, b) => (a.id || 0) - (b.id || 0));
+
+    const want = (tracked.length + emitters.length) > 0;
     if (this.elCatalogPanel.hidden !== !want) this.elCatalogPanel.hidden = !want;
     if (!want) {
-      if (this._catalogNodes.size) {
-        this.elCatalogList.innerHTML = '';
-        this._catalogNodes.clear();
-        if (this._catalogExpanded) this._catalogExpanded.clear();
-      }
+      // Clear all caches when panel hides so a re-show starts clean.
+      this._clearTrackedSection();
+      this._clearDeployedSection();
       return;
     }
+
+    this._renderTrackedSection(tracked, pinnedId, cradleThreshold);
+    this._renderDeployedSection(emitters);
+  }
+
+  _wireCatalogSectionHeaders() {
+    for (const section of [this.elCatalogTrackedSection, this.elCatalogDeployedSection]) {
+      if (!section) continue;
+      const header = section.querySelector('.catalog-section-header');
+      if (!header || header.dataset.wired === '1') continue;
+      header.dataset.wired = '1';
+      const key = section.dataset.section || '';
+      header.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this._catalogSectionCollapsed.has(key)) {
+          this._catalogSectionCollapsed.delete(key);
+        } else {
+          this._catalogSectionCollapsed.add(key);
+        }
+        section.classList.toggle('collapsed', this._catalogSectionCollapsed.has(key));
+      });
+      // Apply any pre-existing collapse state (e.g. restored from defaults).
+      section.classList.toggle('collapsed', this._catalogSectionCollapsed.has(key));
+    }
+  }
+
+  _setSectionCount(section, count) {
+    if (!section) return;
+    const countEl = section.querySelector('.catalog-section-count');
+    if (countEl) {
+      const txt = String(count);
+      if (countEl.textContent !== txt) countEl.textContent = txt;
+    }
+  }
+
+  _clearTrackedSection() {
+    if (this.elCatalogTrackedList && this._catalogNodes.size) {
+      this.elCatalogTrackedList.innerHTML = '';
+      this._catalogNodes.clear();
+      this._catalogExpanded?.clear();
+    }
+    if (this.elCatalogTrackedSection) this.elCatalogTrackedSection.hidden = true;
+    this._setSectionCount(this.elCatalogTrackedSection, 0);
+  }
+
+  _clearDeployedSection() {
+    if (this.elCatalogDeployedList && this._catalogEmitterNodes.size) {
+      this.elCatalogDeployedList.innerHTML = '';
+      this._catalogEmitterNodes.clear();
+    }
+    if (this.elCatalogDeployedSection) this.elCatalogDeployedSection.hidden = true;
+    this._setSectionCount(this.elCatalogDeployedSection, 0);
+  }
+
+  _renderTrackedSection(tracked, pinnedId, cradleThreshold) {
+    if (!this.elCatalogTrackedList) return;
+    if (tracked.length === 0) {
+      this._clearTrackedSection();
+      return;
+    }
+    if (this.elCatalogTrackedSection) this.elCatalogTrackedSection.hidden = false;
+    this._setSectionCount(this.elCatalogTrackedSection, tracked.length);
 
     if (!this._catalogExpanded) this._catalogExpanded = new Set();
 
@@ -1581,22 +1651,18 @@ export class UI {
 
       const expanded = this._catalogExpanded.has(m.id);
       li.classList.toggle('is-expanded', expanded);
-      // Only re-render the timeline when expanded (when collapsed the CSS
-      // hides it via .is-expanded, so its contents don't matter).
       if (expanded) {
         this._renderTimelineInto(timelineEl, m);
       }
 
       // Maintain sort order in the DOM.
-      const nextSibling = prevNode ? prevNode.nextSibling : this.elCatalogList.firstChild;
+      const nextSibling = prevNode ? prevNode.nextSibling : this.elCatalogTrackedList.firstChild;
       if (li !== nextSibling) {
-        this.elCatalogList.insertBefore(li, nextSibling);
+        this.elCatalogTrackedList.insertBefore(li, nextSibling);
       }
       prevNode = li;
     }
 
-    // Remove entries (and their expanded state) for macros that are no
-    // longer tracked or no longer exist.
     for (const [id, entry] of this._catalogNodes) {
       if (!seen.has(id)) {
         entry.li.remove();
@@ -1604,6 +1670,108 @@ export class UI {
         this._catalogExpanded.delete(id);
       }
     }
+  }
+
+  _renderDeployedSection(emitters) {
+    if (!this.elCatalogDeployedList) return;
+    if (emitters.length === 0) {
+      this._clearDeployedSection();
+      return;
+    }
+    if (this.elCatalogDeployedSection) this.elCatalogDeployedSection.hidden = false;
+    this._setSectionCount(this.elCatalogDeployedSection, emitters.length);
+
+    const seen = new Set();
+    let prevNode = null;
+    let idx = 1;
+    for (const emitter of emitters) {
+      if (!emitter || typeof emitter.id !== 'number') continue;
+      seen.add(emitter.id);
+      let entry = this._catalogEmitterNodes.get(emitter.id);
+      if (!entry) {
+        entry = this._buildEmitterEntry(emitter.id);
+        this._catalogEmitterNodes.set(emitter.id, entry);
+      }
+      const { li, titleEl, subEl, eyeBtn } = entry;
+
+      const hidden = !!emitter.hidden;
+      const paused = !!emitter.paused;
+      li.classList.toggle('is-hidden', hidden);
+      li.classList.toggle('is-paused', paused);
+
+      const titleText = `Emitter ${idx}`;
+      if (titleEl.textContent !== titleText) titleEl.textContent = titleText;
+
+      const subText = paused
+        ? 'Paused'
+        : 'Active \u00b7 0.5 particles/sec';
+      if (subEl.textContent !== subText) subEl.textContent = subText;
+
+      if (eyeBtn) {
+        eyeBtn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+        eyeBtn.setAttribute('aria-label', hidden ? 'Show emitter' : 'Hide emitter');
+        eyeBtn.setAttribute('title', hidden ? 'Show emitter' : 'Hide emitter');
+      }
+
+      const nextSibling = prevNode ? prevNode.nextSibling : this.elCatalogDeployedList.firstChild;
+      if (li !== nextSibling) {
+        this.elCatalogDeployedList.insertBefore(li, nextSibling);
+      }
+      prevNode = li;
+      idx++;
+    }
+
+    for (const [id, entry] of this._catalogEmitterNodes) {
+      if (!seen.has(id)) {
+        entry.li.remove();
+        this._catalogEmitterNodes.delete(id);
+      }
+    }
+  }
+
+  _buildEmitterEntry(emitterId) {
+    const li = document.createElement('li');
+    li.className = 'cat-emitter';
+    li.dataset.emitterId = String(emitterId);
+
+    const rowMain = document.createElement('div');
+    rowMain.className = 'cat-row-main';
+
+    const titles = document.createElement('div');
+    titles.className = 'cat-titles';
+    const titleEl = document.createElement('span');
+    titleEl.className = 'cat-title';
+    const subEl = document.createElement('span');
+    subEl.className = 'cat-sub';
+    titles.appendChild(titleEl);
+    titles.appendChild(subEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'cat-emitter-actions';
+
+    const eyeBtn = document.createElement('button');
+    eyeBtn.type = 'button';
+    eyeBtn.className = 'cat-eye';
+    eyeBtn.innerHTML = `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M2 10s2.5-5 8-5 8 5 8 5-2.5 5-8 5-8-5-8-5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+      <circle cx="10" cy="10" r="2.2" stroke="currentColor" stroke-width="1.4"/>
+      <line class="icon-strike" x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>`;
+    eyeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof this.onEmitterVisibilityToggle === 'function') {
+        const isHidden = li.classList.contains('is-hidden');
+        this.onEmitterVisibilityToggle(emitterId, !isHidden);
+      }
+    });
+
+    actions.appendChild(eyeBtn);
+
+    rowMain.appendChild(titles);
+    rowMain.appendChild(actions);
+    li.appendChild(rowMain);
+
+    return { li, titleEl, subEl, eyeBtn };
   }
 
   _buildCatalogEntry(macroId) {

@@ -105,8 +105,22 @@
 
       <div id="hud-catalog" class="panel" hidden>
         <div class="catalog-title">Catalog</div>
-        <ul id="catalog-list"></ul>
-        <div id="catalog-empty" class="catalog-empty">No bodies cataloged yet.</div>
+        <div class="catalog-section" data-section="tracked">
+          <button class="catalog-section-header" type="button">
+            <span class="catalog-chevron">&#x25BE;</span>
+            <span class="catalog-section-label">Tracked</span>
+            <span class="catalog-section-count">0</span>
+          </button>
+          <ul id="catalog-tracked-list" class="catalog-section-list"></ul>
+        </div>
+        <div class="catalog-section" data-section="deployed" hidden>
+          <button class="catalog-section-header" type="button">
+            <span class="catalog-chevron">&#x25BE;</span>
+            <span class="catalog-section-label">Deployed</span>
+            <span class="catalog-section-count">0</span>
+          </button>
+          <ul id="catalog-deployed-list" class="catalog-section-list"></ul>
+        </div>
       </div>
     </div>
 

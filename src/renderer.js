@@ -660,6 +660,7 @@ export class Renderer {
     ctx.lineCap = 'round';
     for (const emitter of emitters) {
       if (!Number.isFinite(emitter?.x) || !Number.isFinite(emitter?.y)) continue;
+      if (emitter.hidden) continue;
       this._drawEmitterGlyph(emitter.x, emitter.y, z, {
         nowS,
         paused: !!emitter.paused,

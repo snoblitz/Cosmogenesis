@@ -189,6 +189,7 @@ export class Simulation {
       x,
       y,
       paused: false,
+      hidden: false,
       accum: 0
     };
     this.emitters.push(emitter);
@@ -206,6 +207,16 @@ export class Simulation {
     const emitter = this.getEmitterById(id);
     if (!emitter) return false;
     emitter.paused = !!paused;
+    return true;
+  }
+
+  // Hide an emitter visually. It continues to emit (and earn Potential),
+  // it just doesn't render. Useful when the player wants a cleaner view
+  // post-deployment.
+  setEmitterHiddenById(id, hidden) {
+    const emitter = this.getEmitterById(id);
+    if (!emitter) return false;
+    emitter.hidden = !!hidden;
     return true;
   }
 
@@ -589,6 +600,7 @@ export class Simulation {
         x: e.x,
         y: e.y,
         paused: e.paused,
+        hidden: !!e.hidden,
         accum: e.accum
       })),
       nextId: this.nextId,
@@ -671,6 +683,7 @@ export class Simulation {
           x,
           y,
           paused: !!e.paused,
+          hidden: !!e.hidden,
           accum: typeof e.accum === 'number' ? e.accum : 0
         });
       }

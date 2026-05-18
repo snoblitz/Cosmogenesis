@@ -128,6 +128,10 @@ ui.onEmitterRemove = (emitterId) => {
   state.requestSave?.();
   refreshTools();
 };
+ui.onEmitterVisibilityToggle = (emitterId, hidden) => {
+  if (!sim.setEmitterHiddenById(emitterId, hidden)) return;
+  state.requestSave?.();
+};
 ui.getToolsContext = () => {
   const deployedCount = sim.deployedEmitterCount();
   const activeCount = sim.activeEmitterCount();
