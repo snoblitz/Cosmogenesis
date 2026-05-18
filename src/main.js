@@ -21,6 +21,58 @@ const ui     = new UI();
 let placementMode = false;
 const elZoomIndicator = document.getElementById('zoom-indicator');
 let _prevZoomLabel = '';
+const elCameraTutorial = document.getElementById('camera-tutorial');
+let _cameraTutorialShown = false;
+let _cameraTutorialDismissTimer = null;
+
+// Show a one-time camera-controls tutorial toast. Detects input device
+// from lastPointerType (set by every real pointer event we have seen)
+// with a matchMedia fallback for the cold-boot case. Auto-dismisses on
+// any manual camera interaction OR after 14 seconds.
+function showCameraTutorialOnce() {
+  if (_cameraTutorialShown || (state && state.cameraTutorialShown) || !elCameraTutorial) return;
+  _cameraTutorialShown = true;
+  if (state) {
+    state.cameraTutorialShown = true;
+    state.requestSave?.();
+  }
+
+  // Device detection: prefer the lastPointerType the player has actually
+  // been using; fall back to media-query heuristics.
+  let isTouch = false;
+  if (lastPointerType === 'touch') isTouch = true;
+  else if (lastPointerType === 'mouse' || lastPointerType === 'pen') isTouch = false;
+  else if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) isTouch = true;
+
+  if (isTouch) {
+    elCameraTutorial.innerHTML =
+      '<strong>The cosmos is yours to roam.</strong> ' +
+      '<span class="ct-sep">·</span> Pinch to zoom ' +
+      '<span class="ct-sep">·</span> Two-finger drag to pan ' +
+      '<span class="ct-sep">·</span> Tap <span class="ct-key">&#x2295;</span> to recenter';
+  } else {
+    elCameraTutorial.innerHTML =
+      '<strong>The cosmos is yours to roam.</strong> ' +
+      '<span class="ct-sep">·</span> Scroll to zoom ' +
+      '<span class="ct-sep">·</span> Hold <span class="ct-key">space</span> + drag to pan ' +
+      '<span class="ct-sep">·</span> Arrow keys nudge ' +
+      '<span class="ct-sep">·</span> <span class="ct-key">&#x2295;</span> to recenter';
+  }
+  elCameraTutorial.hidden = false;
+  requestAnimationFrame(() => elCameraTutorial.classList.add('show'));
+  _cameraTutorialDismissTimer = setTimeout(dismissCameraTutorial, 14000);
+}
+
+function dismissCameraTutorial() {
+  if (!elCameraTutorial || elCameraTutorial.hidden) return;
+  if (_cameraTutorialDismissTimer) {
+    clearTimeout(_cameraTutorialDismissTimer);
+    _cameraTutorialDismissTimer = null;
+  }
+  elCameraTutorial.classList.remove('show');
+  // Wait for fade out before hidden=true so transition runs.
+  setTimeout(() => { if (elCameraTutorial) elCameraTutorial.hidden = true; }, 700);
+}
 
 // --- Load saved game ---
 const saved = loadGame();
@@ -469,6 +521,8 @@ function activateCameraOverride() {
     renderer.cameraOverride = true;
     if (recenterBtn) recenterBtn.hidden = false;
   }
+  // First touch of the camera dismisses the one-time tutorial toast.
+  dismissCameraTutorial();
 }
 
 function recenterCamera() {
@@ -478,6 +532,10 @@ function recenterCamera() {
 }
 
 function userZoomAt(screenX, screenY, factor) {
+  // Pre-First-Light eras keep the player in a small contemplative pocket
+  // of the cosmos. Manual zoom is disabled; Smart Tracking owns the camera.
+  // First Light unlocks the cosmos and manual camera takes over.
+  if (state.eraIndex < FIRST_LIGHT_ERA) return;
   if (!isFinite(factor) || factor <= 0) return;
   const eraZ = ERAS[state.eraIndex]?.zoom ?? 1.0;
   const minZ = eraZ * 0.25;  // pull back up to 4x further than era default
@@ -501,6 +559,8 @@ function userZoomAt(screenX, screenY, factor) {
 }
 
 function userPanBy(dxInternal, dyInternal) {
+  // Same era-lock rule as zoom: pan is a manual camera action.
+  if (state.eraIndex < FIRST_LIGHT_ERA) return;
   const z = renderer.zoom || 1;
   renderer.cam.x -= dxInternal / z;
   renderer.cam.y -= dyInternal / z;
@@ -919,10 +979,14 @@ const SMART_TRACK_MIN_ZOOM_FRAC = 0.3;
 const SMART_TRACK_FIT_BUFFER = 1.08; // 8% breathing room on every side
 function updateSmartTracking(dt) {
   if (renderer.cameraOverride) return;
-  if (!state.settings || !state.settings.smartTracking) return;
-  // Suppress during cinematic moments (e.g. just after First Light expansion
-  // and reframe) so smart-track auto-zoom doesn't fight the dramatic camera
-  // pull-back. State sets smartTrackingSuppressUntil to a future timestamp.
+  // Pre-First-Light eras: Smart Tracking is FORCED on regardless of the
+  // user's setting, because manual camera is locked. Post-First-Light:
+  // respect the user's smartTracking setting.
+  const eraLocked = state.eraIndex < FIRST_LIGHT_ERA;
+  if (!eraLocked && (!state.settings || !state.settings.smartTracking)) return;
+  // Suppress during dramatic cinematics (e.g. just after First Light
+  // expansion and reframe) so smart-track auto-zoom doesn't fight the
+  // dramatic camera pull-back.
   if (state.smartTrackingSuppressUntil && Date.now() < state.smartTrackingSuppressUntil) return;
   const macros = sim.macros;
   if (!macros || macros.length === 0) return;
@@ -1042,6 +1106,14 @@ function frame(now) {
       elZoomIndicator.textContent = label;
       _prevZoomLabel = label;
     }
+  }
+
+  // First time the cosmos-yours whisper has been seen, fire the one-time
+  // camera-controls tutorial so the player learns the freshly-unlocked
+  // manual camera. The whisper itself plays the cosmic-invitation role;
+  // the tutorial gives them the actual controls.
+  if (!_cameraTutorialShown && state.seenWhispers && state.seenWhispers.has('cosmos-yours')) {
+    showCameraTutorialOnce();
   }
 
   requestAnimationFrame(frame);

@@ -1275,6 +1275,52 @@ body {
   pointer-events: none;
 }
 
+/* Camera controls tutorial: one-time hint that appears alongside the
+   cosmos-yours whisper at the end of the First Light cinematic, when
+   manual camera unlocks for the first time. Auto-dismisses on the
+   first manual camera interaction OR after a short timeout. */
+#camera-tutorial {
+  position: absolute;
+  bottom: 96px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  max-width: 520px;
+  padding: 10px 18px;
+  background: rgba(10, 8, 24, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(199, 182, 255, 0.32);
+  border-radius: 22px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  z-index: 60;
+}
+#camera-tutorial[hidden] { display: none; }
+#camera-tutorial.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+#camera-tutorial .ct-key {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 1px 6px;
+  border: 1px solid rgba(199, 182, 255, 0.4);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  color: rgba(255, 255, 255, 0.92);
+  vertical-align: 1px;
+}
+#camera-tutorial .ct-sep {
+  margin: 0 8px;
+  color: rgba(199, 182, 255, 0.5);
+}
+
 /* Settings button: sits above the reset button, same circular chrome. */
 #settings-btn {
   position: absolute;

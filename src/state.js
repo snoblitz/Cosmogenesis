@@ -62,6 +62,10 @@ export class GameState {
     // reload, and so legacy post-First-Light saves can trigger the
     // expansion on first load if they were saved before this feature.
     this.firstLightExpansionDone = false;
+    // Idempotent flag for the one-time camera-controls tutorial toast that
+    // accompanies the cosmos-yours whisper. Persisted so reloads after
+    // First Light don't re-show it.
+    this.cameraTutorialShown = false;
     // Wall-clock timestamp until which Smart Tracking auto-pan is suppressed.
     // Set during dramatic cinematics (First Light) so the auto-fit logic
     // doesn't fight the era-zoom + camera reframe. Not persisted (purely
@@ -217,12 +221,12 @@ export class GameState {
     // sets the flag.
     if (!this.firstLightExpansionDone && this.eraIndex >= FIRST_LIGHT_ERA && sim && typeof sim.expandWorld === 'function') {
       const EXPANSION_FACTOR = 7;       // ~sqrt(50): 50x area, 7x per dim
-      const COSMIC_SEED_COUNT = 800;    // sparse cosmic dust in the outer ring
+      const COSMIC_SEED_COUNT = 3000;   // dense enough to match Era 1-4 player density across the new area
       const expansion = sim.expandWorld(EXPANSION_FACTOR);
       const seededMass = sim.seedCosmicMatter(COSMIC_SEED_COUNT, expansion.oldRect);
       // Bump caps so the bigger universe has headroom for player creation
       // + cosmic seed + future macro formation.
-      sim.particleCap = 5000;
+      sim.particleCap = 8000;
       sim.macroCap = 100;
       // Economy inflation (Option A): credit Potential by the seeded mass
       // so the new Matter doesn't suddenly exceed Potential. Each seeded
@@ -238,6 +242,22 @@ export class GameState {
       this.smartTrackingSuppressUntil = Date.now() + 10000;
       this.firstLightExpansionDone = true;
       if (this.requestSave) this.requestSave();
+    }
+
+    // Cosmic-invitation whisper: fires once when the First-Light camera lerp
+    // settles at the cosmic zoom (~0.06). Bypasses the normal cooldown so
+    // it lands precisely on the cinematic moment, not 30s later. main.js
+    // also kicks the camera-control tutorial toast on the same trigger.
+    if (this.eraIndex >= FIRST_LIGHT_ERA &&
+        !this.seenWhispers.has('cosmos-yours') &&
+        renderer && renderer.zoom <= 0.07) {
+      const w = WHISPERS.find(x => x.id === 'cosmos-yours');
+      if (w) {
+        this.pendingWhisper = w;
+        this.seenWhispers.add(w.id);
+        this._whisperCooldownUntil = Date.now() + WHISPER_COOLDOWN_MS;
+        if (this.requestSave) this.requestSave();
+      }
     }
 
     // Whisper evaluation
@@ -266,6 +286,7 @@ export class GameState {
       thermalScanDone:    this.thermalScanDone,
       visibleScanDone:    this.visibleScanDone,
       firstLightExpansionDone: this.firstLightExpansionDone,
+      cameraTutorialShown: this.cameraTutorialShown,
       settings:           { ...this.settings }
     };
   }
@@ -284,6 +305,7 @@ export class GameState {
     this.thermalScanDone    = !!d.thermalScanDone;
     this.visibleScanDone    = !!d.visibleScanDone;
     this.firstLightExpansionDone = !!d.firstLightExpansionDone;
+    this.cameraTutorialShown = !!d.cameraTutorialShown;
 
     // Migration: saves written before the visibleLensActive field existed
     // had `lensVisuallyActive` doing double duty post-First-Light. If we're

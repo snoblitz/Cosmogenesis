@@ -40,18 +40,13 @@ export const WHISPERS = [
     test: (s) => s.maxParticleMass >= 28
   },
   {
-    id: 'perspective-grows',
-    message: 'Your perspective grows with what you have made.',
-    test: (s, sim, renderer) => renderer && renderer.zoom <= 0.85
-  },
-  {
     id: 'first-macro',
     message: 'Out of many, one. A new center holds the field.',
     test: (s, sim) => sim.macros.length >= 1
   },
   {
     id: 'first-filament',
-    message: 'You have made many. Now see how the many are one.',
+    message: 'Distant macros bend toward each other. The cosmic web takes shape.',
     test: (s, sim) => sim.macros.length >= 2 && s.eraIndex >= 4
   },
   {
@@ -66,6 +61,11 @@ export const WHISPERS = [
     id: 'first-light',
     message: 'The dark threshold has been crossed. What you see now is light itself.',
     test: (s) => s.eraIndex >= 5
+  },
+  {
+    id: 'cosmos-yours',
+    message: 'The void was your study. The cosmos is yours to sow.',
+    test: (s, sim, renderer) => s.eraIndex >= 5 && renderer && renderer.zoom <= 0.07
   }
 ];
 
