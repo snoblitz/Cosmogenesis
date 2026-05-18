@@ -272,6 +272,7 @@ export class Audio {
     if (this.muted) return;
     if (!this._ensure()) return;
     if (eraIndex === 3) this._playStructureEmergenceCue();
+    if (eraIndex === 5) this._playFirstLightCue();
   }
 
   // Era 3: Structure Emerges. The first macro has formed. The cue is a
@@ -327,6 +328,70 @@ export class Audio {
       osc.start(t);
       osc.stop(stopAt);
       if (lfo) { lfo.start(t); lfo.stop(stopAt); }
+    }
+  }
+
+  // Era 5: First Light. A brightened A-minor pentatonic bloom: staggered high
+  // bells opening through a lowpass sweep over a soft A/E pad beneath.
+  _playFirstLightCue() {
+    const t = this.ctx.currentTime;
+
+    const bellsLp = this.ctx.createBiquadFilter();
+    bellsLp.type = 'lowpass';
+    bellsLp.Q.value = 0.8;
+    bellsLp.frequency.setValueAtTime(900, t);
+    bellsLp.frequency.exponentialRampToValueAtTime(4200, t + 1.0);
+    bellsLp.frequency.exponentialRampToValueAtTime(3000, t + 6.4);
+    bellsLp.connect(this.master);
+
+    const bellVoices = [
+      { freq:  880.0, peak: 0.045, startOffsetS: 0.00 },
+      { freq: 1046.5, peak: 0.040, startOffsetS: 0.09 },
+      { freq: 1318.5, peak: 0.036, startOffsetS: 0.18 }
+    ];
+
+    for (const voice of bellVoices) {
+      const startAt = t + voice.startOffsetS;
+      const osc = this.ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = voice.freq;
+      osc.detune.value = (Math.random() - 0.5) * 10;
+
+      const gain = this.ctx.createGain();
+      const peak = voice.peak * this._sustainMultiplier;
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.linearRampToValueAtTime(peak, startAt + 0.4);
+      gain.gain.exponentialRampToValueAtTime(0.0005, startAt + 6.4);
+
+      osc.connect(gain);
+      gain.connect(bellsLp);
+
+      osc.start(startAt);
+      osc.stop(startAt + 6.7);
+    }
+
+    const padVoices = [
+      { freq: 220.0, peak: 0.038 },
+      { freq: 164.8, peak: 0.028 }
+    ];
+
+    for (const voice of padVoices) {
+      const osc = this.ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = voice.freq;
+      osc.detune.value = (Math.random() - 0.5) * 4;
+
+      const gain = this.ctx.createGain();
+      const peak = voice.peak * this._sustainMultiplier;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime(peak, t + 1.8);
+      gain.gain.exponentialRampToValueAtTime(0.0005, t + 8.0);
+
+      osc.connect(gain);
+      gain.connect(this.master);
+
+      osc.start(t);
+      osc.stop(t + 8.3);
     }
   }
 }
