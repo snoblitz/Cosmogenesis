@@ -984,8 +984,13 @@ export class UI {
     this._contextMenuLastX = opts.screenX;
     this._contextMenuLastY = opts.screenY;
     this._contextMenuAnchorMode = opts.anchorMode || 'corner';
-    // Touch path animates from the touch point; desktop right-click keeps its
-    // existing top-left animation untouched.
+    // Snap to the new position with no transition first, otherwise the
+    // leftover inline transform from the previous open would visibly fly
+    // across the screen to the new touch point.
+    menu.style.transition = 'none';
+    this._positionContextMenu(opts.screenX, opts.screenY);
+    // Force layout so the snap is committed before we re-enable transitions.
+    void menu.offsetWidth;
     if (this._contextMenuAnchorMode === 'right') {
       menu.style.transition =
         'opacity 200ms cubic-bezier(0.22, 1.4, 0.36, 1),' +
@@ -994,11 +999,10 @@ export class UI {
       menu.style.transition = '';
       menu.style.transformOrigin = '';
     }
-    this._positionContextMenu(opts.screenX, opts.screenY);
     requestAnimationFrame(() => {
       if (!menu.hidden) {
         menu.setAttribute('data-visible', '1');
-        // Re-position now that the visible scale is final.
+        // Re-apply the position now that visible scale is 1.
         this._positionContextMenu(this._contextMenuLastX, this._contextMenuLastY);
       }
     });
