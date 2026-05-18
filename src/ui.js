@@ -102,6 +102,13 @@ const GLOBAL_SETTINGS = [
     ],
     tooltip: 'The pointer style shown while hovering over the universe canvas.',
     onChange: (v, ui) => ui._applyCursor && ui._applyCursor(v)
+  },
+  {
+    key: 'touchOffsetPx',
+    label: 'Touch Offset',
+    min: 0, max: 80, step: 4, default: 0,
+    format: (v) => v === 0 ? 'Off' : `${Math.round(v)}px`,
+    tooltip: 'For touch input only. Lifts the effective tap point above your fingertip so the spawn isn\'t hidden under your finger. Mouse and stylus are never offset. Try 32px on phones if the dot lands under your touch.'
   }
 ];
 

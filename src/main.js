@@ -136,9 +136,18 @@ function clearLongPress() {
 
 function eventToScreen(e) {
   const rect = canvas.getBoundingClientRect();
+  // Touch-only vertical offset: lifts the effective hit point above the
+  // fingertip so the spawn isn't hidden under the user's finger. Mouse and
+  // pen input are unaffected. Offset is in CSS pixels, scaled to canvas px.
+  let cssY = e.clientY - rect.top;
+  if (e.pointerType === 'touch') {
+    const off = (state && state.settings && typeof state.settings.touchOffsetPx === 'number')
+      ? state.settings.touchOffsetPx : 0;
+    if (off) cssY -= off;
+  }
   return {
     x: (e.clientX - rect.left) * (canvas.width  / rect.width),
-    y: (e.clientY - rect.top)  * (canvas.height / rect.height)
+    y: cssY                    * (canvas.height / rect.height)
   };
 }
 

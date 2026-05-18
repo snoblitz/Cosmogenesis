@@ -55,7 +55,8 @@ export class GameState {
       thermalDimAmount:         1.0,     // multiplier on dimming overlay (0..1.5)
       thermalScanlineIntensity: 1.0,     // multiplier on scanline grain (0..2)
       thermalShowScale:         true,    // show cold-to-warm temperature legend
-      cursorStyle:              'crosshair' // pointer style over the canvas
+      cursorStyle:              'crosshair', // pointer style over the canvas
+      touchOffsetPx:            0        // vertical offset (CSS px) lifting touch input above the fingertip
     };
 
     // External save hook, main.js sets this so state mutations that must
