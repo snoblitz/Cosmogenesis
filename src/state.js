@@ -57,7 +57,8 @@ export class GameState {
       thermalShowScale:         true,    // show cold-to-warm temperature legend
       cursorStyle:              'crosshair', // pointer style over the canvas
       touchOffsetPx:            0,       // vertical offset (CSS px) lifting touch input above the fingertip
-      showTouchPointer:         false    // render the chosen cursor glyph at the touch location
+      showTouchPointer:         false,   // render the chosen cursor glyph at the touch location
+      smartTracking:            false    // slowly pan the camera to keep the most mass on screen
     };
 
     // External save hook, main.js sets this so state mutations that must

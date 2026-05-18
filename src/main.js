@@ -475,6 +475,46 @@ canvas.addEventListener('pointerenter', (e) => {
 
 // --- Game loop ---
 let last = performance.now();
+
+// Smart Tracking: when enabled, exponentially lerp the camera center toward
+// the mass-weighted centroid of all macros so structures and cradles stay on
+// screen as they drift. Time constant ~1.4s -- slow enough that the motion
+// reads as the universe settling rather than the camera chasing. Bounded by
+// the world so we never pan into pure void.
+const SMART_TRACK_TAU_S = 1.4;
+function updateSmartTracking(dt) {
+  if (!state.settings || !state.settings.smartTracking) return;
+  const macros = sim.macros;
+  if (!macros || macros.length === 0) return;
+
+  let totalM = 0, sx = 0, sy = 0;
+  for (const m of macros) {
+    const mass = Math.max(m.mass || 1, 1);
+    sx += m.x * mass;
+    sy += m.y * mass;
+    totalM += mass;
+  }
+  if (totalM <= 0) return;
+
+  let tx = sx / totalM;
+  let ty = sy / totalM;
+
+  // Keep at least half the viewport inside the world bounds so we never
+  // expose the void edge while tracking.
+  const z = renderer.zoom || 1;
+  const halfW = (canvas.width  / z) / 2;
+  const halfH = (canvas.height / z) / 2;
+  const W = sim.bounds.w, H = sim.bounds.h;
+  if (halfW * 2 < W) tx = Math.min(Math.max(tx, halfW), W - halfW);
+  else tx = W / 2;
+  if (halfH * 2 < H) ty = Math.min(Math.max(ty, halfH), H - halfH);
+  else ty = H / 2;
+
+  const alpha = 1 - Math.exp(-dt / SMART_TRACK_TAU_S);
+  renderer.cam.x += (tx - renderer.cam.x) * alpha;
+  renderer.cam.y += (ty - renderer.cam.y) * alpha;
+}
+
 function frame(now) {
   const dt = Math.min((now - last) / 1000, 1 / 30);
   last = now;
@@ -504,6 +544,7 @@ function frame(now) {
 
   sim.tick(dt);
   state.update(sim, renderer);
+  updateSmartTracking(dt);
   renderer.render(sim, state);
   ui.render(state);
   resolveInspector();

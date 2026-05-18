@@ -117,6 +117,13 @@ const GLOBAL_SETTINGS = [
     default: false,
     tooltip: 'For touch input only. Renders your chosen cursor at the tap location so you can see exactly where the spawn lands - especially useful with Touch Offset enabled. Mouse and stylus are unaffected.',
     onChange: (_v, ui) => ui._refreshTouchPointerStyle && ui._refreshTouchPointerStyle()
+  },
+  {
+    key: 'smartTracking',
+    label: 'Smart Tracking',
+    type: 'toggle',
+    default: false,
+    tooltip: 'Slowly pans the camera to keep your structures and cradles on screen. Useful on small viewports where bodies drift out of view. No zoom change.'
   }
 ];
 
