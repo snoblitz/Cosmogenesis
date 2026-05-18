@@ -647,6 +647,14 @@ body {
 #macro-inspector[data-kind="cradle"] .mi-kind {
   color: #ffd49b;
 }
+#macro-inspector[data-kind="star"] .mi-kind {
+  color: #ffe8a8;
+}
+#macro-inspector[data-kind="star"] {
+  border-color: rgba(255, 232, 168, 0.45);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5),
+              0 0 56px rgba(255, 232, 168, 0.16);
+}
 #macro-inspector .mi-name {
   display: block;
   font-size: 14px;
@@ -880,6 +888,17 @@ body {
 #catalog-list li[data-kind="cradle"].is-pinned {
   border-left-color: #ffd49b;
 }
+#catalog-list li.is-star,
+#catalog-list li[data-kind="star"] {
+  border-left-color: rgba(255, 232, 168, 0.62);
+}
+#catalog-list li.is-star:hover,
+#catalog-list li.is-star.is-pinned,
+#catalog-list li[data-kind="star"]:hover,
+#catalog-list li[data-kind="star"].is-pinned {
+  background: rgba(255, 232, 168, 0.12);
+  border-left-color: #ffe8a8;
+}
 #catalog-list .cat-row-main {
   display: flex;
   align-items: flex-start;
@@ -941,6 +960,13 @@ body {
   background: rgba(255, 212, 155, 0.16);
   border-color: rgba(255, 212, 155, 0.35);
 }
+#catalog-list li.is-star .cat-chevron:hover,
+#catalog-list li.is-star.is-expanded .cat-chevron,
+#catalog-list li[data-kind="star"] .cat-chevron:hover,
+#catalog-list li[data-kind="star"].is-expanded .cat-chevron {
+  background: rgba(255, 232, 168, 0.18);
+  border-color: rgba(255, 232, 168, 0.38);
+}
 #catalog-list .cat-timeline {
   margin-top: 8px;
   padding: 6px 0 2px 8px;
@@ -954,6 +980,10 @@ body {
 }
 #catalog-list li[data-kind="cradle"] .cat-timeline {
   border-left-color: rgba(255, 212, 155, 0.28);
+}
+#catalog-list li.is-star .cat-timeline,
+#catalog-list li[data-kind="star"] .cat-timeline {
+  border-left-color: rgba(255, 232, 168, 0.34);
 }
 #catalog-list .cat-event {
   font-size: 11px;
@@ -976,6 +1006,24 @@ body {
 #catalog-list .cat-event[data-kind="cradle"] .cat-event-year,
 #catalog-list .cat-event[data-kind="born-cradle"] .cat-event-year {
   color: rgba(255, 212, 155, 0.95);
+}
+#catalog-list .cat-event[data-kind="ignited"] {
+  position: relative;
+}
+#catalog-list .cat-event[data-kind="ignited"]::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #ffe8a8;
+  box-shadow: 0 0 10px rgba(255, 232, 168, 0.75);
+}
+#catalog-list .cat-event[data-kind="ignited"] .cat-event-year {
+  color: rgba(255, 232, 168, 0.98);
+  text-shadow: 0 0 10px rgba(255, 232, 168, 0.4);
 }
 #catalog-list .cat-event-label {
   display: block;

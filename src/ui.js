@@ -71,6 +71,13 @@ const INSTRUMENT_ICONS = {
       <circle cx="8" cy="8" r="1.8" fill="currentColor" stroke="none"/>
     </g>
     <line class="icon-strike" x1="1.5" y1="14.5" x2="14.5" y2="1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  </svg>`,
+  fisheye: `<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <g class="icon-glyph" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="8" cy="8" r="4.5"/>
+      <circle cx="8" cy="8" r="2" fill="currentColor" stroke="none"/>
+    </g>
+    <line class="icon-strike" x1="1.5" y1="14.5" x2="14.5" y2="1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
   </svg>`
 };
 
@@ -80,6 +87,12 @@ const TOMBSTONE_SVG = `<svg viewBox="0 0 12 14" xmlns="http://www.w3.org/2000/sv
   <path d="M2 6 Q2 1.5 6 1.5 Q10 1.5 10 6 L10 13 L2 13 Z" fill="currentColor"/>
   <path d="M5 4.4 L7 4.4 M6 3.4 L6 5.4" stroke="rgba(0,0,0,0.35)" stroke-width="0.6" stroke-linecap="round" fill="none"/>
 </svg>`;
+
+function macroKindLabel(kind) {
+  if (kind === 'star') return 'Star';
+  if (kind === 'cradle') return 'Cradle';
+  return 'Structure';
+}
 
 // Instruments: observation tools the player actively wields (toggleable).
 // Each gets a clickable entry in the Instruments HUD panel. State-derived,
@@ -213,6 +226,7 @@ const INSTRUMENT_DEFINITIONS = [
   {
     id: 'visible-lens',
     label: 'Visible Lens',
+    icon: 'fisheye',
     earned: (state) => state.eraIndex >= FIRST_LIGHT_ERA,
     toggleable: true,
     settings: []
@@ -862,7 +876,7 @@ export class UI {
     const wasHidden = el.hidden;
     if (wasHidden) el.hidden = false;
 
-    const kindLabel = data.kind === 'cradle' ? 'Cradle' : 'Structure';
+    const kindLabel = macroKindLabel(data.kind);
     if (this.elInspectorKind && this.elInspectorKind.textContent !== kindLabel) {
       this.elInspectorKind.textContent = kindLabel;
     }
@@ -873,7 +887,7 @@ export class UI {
     // value from a previous macro.
     const displayName = (data.name && data.name.length > 0)
       ? data.name
-      : (data.kind === 'cradle' ? 'Cradle' : 'Structure');
+      : macroKindLabel(data.kind);
     if (this.elInspectorName) {
       if (this.elInspectorName.textContent !== displayName) {
         this.elInspectorName.textContent = displayName;
@@ -1193,7 +1207,7 @@ export class UI {
     if (this.elContextMenuTitle) {
       const title = opts.name && opts.name.length
         ? opts.name
-        : (opts.kind === 'cradle' ? 'Cradle' : 'Structure');
+        : macroKindLabel(opts.kind);
       if (this.elContextMenuTitle.textContent !== title) {
         this.elContextMenuTitle.textContent = title;
       }
@@ -1399,15 +1413,16 @@ export class UI {
 
       const kind = m.kind || (m.mass >= cradleThreshold ? 'cradle' : 'structure');
       if (li.dataset.kind !== kind) li.dataset.kind = kind;
+      li.classList.toggle('is-star', kind === 'star');
       const isPinned = (pinnedId != null && pinnedId === m.id);
       li.classList.toggle('is-pinned', isPinned);
 
       const titleText = m.name && m.name.length
         ? m.name
-        : (kind === 'cradle' ? 'Cradle' : 'Structure');
+        : macroKindLabel(kind);
       if (titleEl.textContent !== titleText) titleEl.textContent = titleText;
 
-      const kindLabel = kind === 'cradle' ? 'Cradle' : 'Structure';
+      const kindLabel = macroKindLabel(kind);
       const massStr = fmt(Math.round(m.mass));
       const subText = `${kindLabel} \u00b7 ${massStr} mass`;
       if (subEl.textContent !== subText) subEl.textContent = subText;
@@ -1556,6 +1571,11 @@ export class UI {
     }
     if (ev.kind === 'cradle') {
       return `Crossed Cradle threshold (mass ${mass})`;
+    }
+    if (ev.kind === 'ignited') {
+      return ev.prevName
+        ? `Ignited as Star — was ${ev.prevName}`
+        : 'Ignited as Star';
     }
     if (ev.kind === 'absorbed') {
       const target = ev.targetName || 'an unnamed body';
