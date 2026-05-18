@@ -1087,13 +1087,13 @@ body {
   animation: armedPulse 1s ease-in-out infinite;
 }
 
-/* Recenter button: bottom-left mirror of reset-btn. Hidden via the
-   [hidden] attribute by default; main.js toggles it when the camera
-   override is active. */
+/* Recenter button: sits above the mute button in the right-side stack.
+   Hidden via the [hidden] attribute by default; main.js toggles it
+   when the camera override is active. */
 #recenter-btn {
   position: absolute;
-  bottom: 24px;
-  left: 24px;
+  bottom: 168px;
+  right: 24px;
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -1435,8 +1435,8 @@ body {
     width: 38px; height: 38px;
   }
   #recenter-btn {
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    left: max(10px, env(safe-area-inset-left, 0px));
+    bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+    right: max(10px, env(safe-area-inset-right, 0px));
     width: 38px; height: 38px;
   }
   #settings-btn {
