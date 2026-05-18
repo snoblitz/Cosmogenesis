@@ -375,6 +375,15 @@ export class Renderer {
     ctx.translate(-this.cam.x, -this.cam.y);
 
     ctx.globalCompositeOperation = 'lighter';
+    // Stash visible-lens settings for the macro/atmosphere/star paths to
+    // read. Cheaper than threading state through 5 method signatures, and
+    // these values don't change mid-frame.
+    const settings = (state && state.settings) || {};
+    this._visibleMode = isVisibleSpectrum(state);
+    this._visibleExposure = (typeof settings.visibleExposure === 'number') ? settings.visibleExposure : 1.0;
+    this._visibleBloom    = (typeof settings.visibleBloom === 'number')    ? settings.visibleBloom    : 1.0;
+    this._visibleDiffractionSpikes = !!settings.visibleDiffractionSpikes;
+
     for (const p of sim.particles) this._drawParticle(p, z);
     // Filaments draw under macros so macro halos anchor the web visually.
     if (state && state.eraIndex >= 4) this._drawFilaments(sim);
@@ -383,8 +392,7 @@ export class Renderer {
     // bright macro core, so the macro still reads as the focal point.
     for (const m of sim.macros)    this._drawMacroAtmosphere(m, t, sim.totalElapsedS);
     this._drawEmitters(sim, t, z, ui);
-    const visibleMode = isVisibleSpectrum(state);
-    for (const m of sim.macros)    this._drawMacro(m, visibleMode);
+    for (const m of sim.macros)    this._drawMacro(m, this._visibleMode);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
 
@@ -564,8 +572,12 @@ export class Renderer {
       const hue = visibleMode ? visibleHueFor(m.mass) : m.hue;
       sprite = this.macroSprites[this._hueIndex(hue, MACRO_HUE_BUCKETS)];
     }
-    ctx.globalAlpha = 1;
+    // Exposure: in visible-spectrum mode, the Visible Lens has a player-
+    // tunable exposure setting (camera-style brightness). Outside visible
+    // mode the alpha stays 1.0.
+    ctx.globalAlpha = visibleMode ? Math.max(0, Math.min(2, this._visibleExposure || 1)) : 1;
     ctx.drawImage(sprite, m.x - glowR, m.y - glowR, glowR * 2, glowR * 2);
+    ctx.globalAlpha = 1;
   }
 
   _drawEmitterGlyph(x, y, z, opts = {}) {
@@ -640,7 +652,10 @@ export class Renderer {
   _drawStarAura(m, tSec, haloR) {
     const ctx = this.ctx;
     const baseR = m.r * this.dpr;
-    const outerR = haloR + baseR * 2.2;
+    // Visible Lens "Star Bloom" setting scales the halo radius. 0 = sharp
+    // pinpoint, 1 = baseline, 2 = soft long-exposure glow.
+    const bloom = (this._visibleMode && typeof this._visibleBloom === 'number') ? this._visibleBloom : 1.0;
+    const outerR = haloR + baseR * 2.2 * bloom;
     const pulse = 1 + 0.06 * Math.sin(tSec * Math.PI * 2 * 0.7 + (m.id || 0) * 0.37);
     const halo = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, outerR);
     halo.addColorStop(0.0, `hsla(50, 96%, 92%, ${0.55 * pulse})`);
@@ -651,6 +666,47 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(m.x, m.y, outerR, 0, Math.PI * 2);
     ctx.fill();
+
+    // Optional Hubble-style diffraction spikes through the star. Drawn as
+    // a 4-pointed cross (vertical + horizontal) with linear-gradient alpha
+    // falloff from the center. Only renders when the Visible Lens is on
+    // AND the player has explicitly enabled the setting.
+    if (this._visibleMode && this._visibleDiffractionSpikes) {
+      this._drawDiffractionSpikes(m, tSec, outerR);
+    }
+  }
+
+  _drawDiffractionSpikes(m, tSec, outerR) {
+    const ctx = this.ctx;
+    // Spike length scales with star size. Long enough to read clearly,
+    // not so long it dominates the screen.
+    const len = outerR * 1.7;
+    const wPx = Math.max(1, 1.4 * this.dpr);
+    // Subtle twinkle: spike length breathes ±10% on a star-unique phase.
+    const twink = 1 + 0.10 * Math.sin(tSec * Math.PI * 2 * 0.55 + (m.id || 0) * 0.91);
+    const L = len * twink;
+
+    // Each spike: gradient from bright center to transparent tip, drawn
+    // as a thin rectangle rotated to its axis. Using rect+gradient instead
+    // of stroked lines because rectangles can carry a fade.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(m.x, m.y);
+    for (let i = 0; i < 2; i++) {
+      // i=0 horizontal, i=1 vertical
+      ctx.save();
+      ctx.rotate(i * Math.PI / 2);
+      const g = ctx.createLinearGradient(-L, 0, L, 0);
+      g.addColorStop(0.0,  'hsla(48, 96%, 92%, 0)');
+      g.addColorStop(0.42, 'hsla(48, 96%, 94%, 0.45)');
+      g.addColorStop(0.5,  'hsla(50, 100%, 98%, 0.85)');
+      g.addColorStop(0.58, 'hsla(48, 96%, 94%, 0.45)');
+      g.addColorStop(1.0,  'hsla(48, 96%, 92%, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-L, -wPx, L * 2, wPx * 2);
+      ctx.restore();
+    }
+    ctx.restore();
   }
 
   _drawIgnitionBurst(m, simTimeS) {

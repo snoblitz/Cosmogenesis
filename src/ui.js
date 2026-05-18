@@ -233,9 +233,22 @@ const INSTRUMENT_DEFINITIONS = [
     id: 'visible-lens',
     label: 'Visible Lens',
     icon: 'fisheye',
+    // Unlocked at First Light. Sits alongside Thermal in the panel — the
+    // player toggles between the two as observation modes (mutex enforced
+    // in state.toggleLens). Customizations below tune the visible render
+    // like a real telescope: exposure, bloom, diffraction.
     earned: (state) => state.eraIndex >= FIRST_LIGHT_ERA,
     toggleable: true,
-    settings: []
+    settings: [
+      { key: 'visibleExposure', label: 'Exposure', min: 0.3, max: 2.0, step: 0.05, default: 1.0,
+        format: (v) => `${Math.round(v * 100)}%`,
+        tooltip: 'Brightness of the visible-spectrum view, like a camera exposure setting. Lower it for a cleaner contrast against the void; raise it to coax faint emission out of cooler bodies.' },
+      { key: 'visibleBloom', label: 'Star Bloom', min: 0, max: 2.0, step: 0.05, default: 1.0,
+        format: (v) => `${Math.round(v * 100)}%`,
+        tooltip: 'How much halo glow surrounds bright bodies. Zero gives the sharp pinpoint look of a perfect lens; higher values feel like atmospheric scatter or a long-exposure photo.' },
+      { key: 'visibleDiffractionSpikes', label: 'Diffraction Spikes', type: 'toggle', default: false,
+        tooltip: 'Cross-shaped spikes on the brightest bodies. Real telescopes with support vanes produce these naturally; toggling them gives the view that classic Hubble-image feel.' }
+    ]
   }
 ];
 
