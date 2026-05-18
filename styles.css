@@ -612,6 +612,26 @@ body {
 #macro-inspector[data-visible="1"] {
   opacity: 1;
 }
+#inspector-leader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 179;
+  height: 1px;
+  width: 0;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.35),
+              0 0 10px rgba(184, 164, 255, 0.25);
+  transform-origin: 0 50%;
+  transform: translate3d(-9999px, -9999px, 0);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  will-change: transform, width, opacity;
+}
+#inspector-leader[data-visible="1"] {
+  opacity: 1;
+}
 #macro-inspector .mi-kind {
   display: block;
   font-size: 10px;

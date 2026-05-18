@@ -261,6 +261,7 @@ export class UI {
     this.elInspectorFil  = this.elInspector?.querySelector('[data-mi="filaments"]') || null;
     this.elInspectorFilRow = this.elInspector?.querySelector('.mi-row-filaments') || null;
     this.elInspectorHint = this.elInspector?.querySelector('.mi-hint') || null;
+    this.elInspectorLeader = document.getElementById('inspector-leader');
     this.elCatalogPanel  = document.getElementById('hud-catalog');
     this.elCatalogList   = document.getElementById('catalog-list');
     this._catalogNodes   = new Map();   // macroId -> { li, titleEl, subEl, timelineEl }
@@ -850,6 +851,10 @@ export class UI {
         el.hidden = true;
         this._inspectorVisible = false;
       }
+      if (this.elInspectorLeader) {
+        this.elInspectorLeader.removeAttribute('data-visible');
+        this.elInspectorLeader.hidden = true;
+      }
       return;
     }
 
@@ -949,6 +954,52 @@ export class UI {
     if (y + this._inspectorHeight > vh - pad) y = vh - pad - this._inspectorHeight;
 
     el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+    this._positionInspectorLeader(data, x, y);
+  }
+
+  _positionInspectorLeader(data, panelX, panelY) {
+    const leader = this.elInspectorLeader;
+    if (!leader) return;
+    const w = this._inspectorWidth;
+    const h = this._inspectorHeight;
+    if (w <= 0 || h <= 0) {
+      leader.removeAttribute('data-visible');
+      leader.hidden = true;
+      return;
+    }
+
+    const left = panelX, right = panelX + w;
+    const top = panelY, bottom = panelY + h;
+    const mx = data.screenX, my = data.screenY;
+
+    // Anchor point: nearest point on the panel rectangle to the macro center.
+    const ax = Math.max(left, Math.min(right, mx));
+    const ay = Math.max(top, Math.min(bottom, my));
+
+    // Endpoint near the macro: stop short of its outer edge so the line
+    // touches the body cleanly without overlapping it.
+    const dx = ax - mx, dy = ay - my;
+    const dist = Math.hypot(dx, dy);
+    const macroR = data.macroRadiusCss || 12;
+    const gap = macroR + 4;
+    if (dist <= gap + 6) {
+      leader.removeAttribute('data-visible');
+      leader.hidden = true;
+      return;
+    }
+    const tx = mx + (dx / dist) * gap;
+    const ty = my + (dy / dist) * gap;
+    const lineLen = Math.hypot(ax - tx, ay - ty);
+    const angle = Math.atan2(ay - ty, ax - tx);
+
+    leader.hidden = false;
+    leader.style.width = `${lineLen}px`;
+    leader.style.transform = `translate3d(${tx}px, ${ty}px, 0) rotate(${angle}rad)`;
+    if (leader.getAttribute('data-visible') !== '1') {
+      requestAnimationFrame(() => {
+        if (!leader.hidden) leader.setAttribute('data-visible', '1');
+      });
+    }
   }
 
   // ---- Context menu (right-click / long-press) ----
