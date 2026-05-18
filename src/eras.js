@@ -47,39 +47,44 @@ export const ERAS = [
   { name: 'First Light',             law: 'Density ignites the first radiance.',
     lawTooltip: 'A sufficiently massive macro crosses the ignition threshold and begins emitting true visible light. The dark age ends.',
     eraTooltip: 'Macros that reach the ignition threshold begin to emit visible light. The thermal lens gives way to the eye.',
-    hint: '', zoom: 0.44 },
+    hint: '', zoom: 0.22 },
   { name: 'The Age of Stars',        law: 'Light becomes the architect of form.',
     lawTooltip: 'Stars stabilize through the balance of gravity and radiation pressure. Stable orbital structures become possible.',
     eraTooltip: 'Light and gravity balance into stable stars. Orbital systems become possible.',
-    hint: '', zoom: 0.42 },
+    hint: '', zoom: 0.20 },
   { name: 'The Cycle of Creation',   law: 'What collapses gives rise to what arises.',
     lawTooltip: 'Massive stars exhaust their fuel and explode, scattering heavy matter as seed for the next generation.',
     eraTooltip: 'Massive stars exhaust their fuel and supernova, scattering heavy matter as seeds for new structures.',
-    hint: '', zoom: 0.40 },
+    hint: '', zoom: 0.20 },
   { name: 'Galaxies Take Shape',     law: 'Structure remembers its origin.',
     lawTooltip: 'Stars bind into galaxies with shared rotation. Each carries the imprint of how it formed.',
     eraTooltip: 'Stars bind into vast rotating systems. Each carries the memory of how it formed.',
-    hint: '', zoom: 0.41 },
+    hint: '', zoom: 0.20 },
   { name: 'Dark Architecture',       law: 'The unseen sculpts the visible.',
     lawTooltip: 'Dark matter scaffolding becomes apparent. The visible cosmos rides on an invisible substrate.',
     eraTooltip: 'Invisible mass becomes apparent through its gravitational effects. The cosmos rides on an unseen substrate.',
-    hint: '', zoom: 0.40 },
+    hint: '', zoom: 0.20 },
   { name: 'Conscious Observation',   law: 'The universe begins to perceive itself.',
     lawTooltip: 'The first observer emerges in a stable system. Awareness becomes part of the physics.',
     eraTooltip: 'The universe begins to perceive itself. Awareness becomes part of the physics.',
-    hint: '', zoom: 0.40 },
+    hint: '', zoom: 0.20 },
   { name: 'The Remembering Universe',law: 'All that has been is held within all that is.',
     lawTooltip: 'The universe acquires memory. Past states leave faint echoes detectable in the present.',
     eraTooltip: 'Every past state leaves an echo detectable in the present.',
-    hint: '', zoom: 0.40 },
+    hint: '', zoom: 0.20 },
   { name: 'Recursion',               law: 'A new void opens within the bloom.',
     lawTooltip: 'The cycle completes. Within any structure, a smaller void contains a smaller universe. Begin again.',
     eraTooltip: 'The cycle completes. A new void opens within the bloom. Begin again.',
-    hint: '', zoom: 0.40 }
+    hint: '', zoom: 0.20 }
 ];
 
 // The most zoomed-out we will ever go (determines world size vs. viewport).
-export const MIN_ZOOM = 0.40;
+// At MIN_ZOOM = 0.20 the world is 5x viewport in each dimension (25x area),
+// giving First Light + later eras the room to read as truly cosmic. The
+// Era 5 cinematic zoom of 0.22 takes advantage of this: a star and its
+// entourage occupy a small fraction of the now-much-larger visible field
+// instead of dominating it.
+export const MIN_ZOOM = 0.20;
 
 // The era index at which "First Light" occurs. Before this, the renderer
 // applies a thermal/dim treatment; at this era, the universe ignites into
