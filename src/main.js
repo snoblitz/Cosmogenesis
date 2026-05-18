@@ -747,17 +747,21 @@ let last = performance.now();
 
 // Smart Tracking: when enabled, frame the camera so all macros stay on
 // screen. Two ingredients:
-//   * Aim point = blend of (sqrt(mass)-weighted centroid) and (bbox center),
-//     so a huge cradle nudges the frame toward itself but doesn't dominate
-//     to the point of pushing smaller macros off screen.
+//   * Aim point = blend of (bbox center) and (sqrt(mass)-weighted centroid),
+//     bbox-heavy (80/20) so the frame is dictated by the spread of bodies
+//     rather than the position of the heaviest one. A huge cradle still
+//     nudges the focus slightly toward itself, but smaller bodies can't
+//     be pushed off-screen by it.
 //   * Zoom = era zoom by default, but zoomed out enough to fit every
-//     macro's halo inside the viewport. Capped at half era zoom so the
-//     universe never shrinks to a dot.
-// Time constant ~1.4s -- slow enough that the motion reads as the
-// universe settling rather than the camera chasing. Bounded by the world
-// so we never pan into pure void.
-const SMART_TRACK_TAU_S = 1.4;
-const SMART_TRACK_MIN_ZOOM_FRAC = 0.5; // never zoom below half era zoom
+//     macro's halo inside the viewport (with a small breathing-room
+//     buffer). Capped at 0.3 of era zoom so the universe never shrinks
+//     to a dot.
+// Time constant ~0.9s -- fast enough to actually catch drifting bodies,
+// slow enough that the camera reads as settling rather than chasing.
+// Bounded by the world so we never pan into pure void.
+const SMART_TRACK_TAU_S = 0.9;
+const SMART_TRACK_MIN_ZOOM_FRAC = 0.3;
+const SMART_TRACK_FIT_BUFFER = 1.08; // 8% breathing room on every side
 function updateSmartTracking(dt) {
   if (renderer.cameraOverride) return;
   if (!state.settings || !state.settings.smartTracking) return;
@@ -769,9 +773,8 @@ function updateSmartTracking(dt) {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const m of macros) {
     const mass = Math.max(m.mass || 1, 1);
-    // Sub-linear influence so a 10,000-mass cradle isn't 10,000× the pull
-    // of a fresh macro -- it's only ~100× -- and still leaves room for
-    // smaller bodies in the frame.
+    // Sub-linear influence (sqrt) is the gentlest weighting that still
+    // biases toward heavier bodies. Used at low weight in the blend.
     const w = Math.sqrt(mass);
     sx += m.x * w;
     sy += m.y * w;
@@ -790,16 +793,16 @@ function updateSmartTracking(dt) {
   const wcy = sy / totalW;
   const bcx = (minX + maxX) / 2;
   const bcy = (minY + maxY) / 2;
-  // 50/50 blend: weighted centroid gives the eye a focal point near mass,
-  // bbox center prevents that focal point from kicking smaller bodies out.
-  let tx = (wcx + bcx) * 0.5;
-  let ty = (wcy + bcy) * 0.5;
+  // 80% bbox / 20% weighted: frame is dominated by where bodies *are*,
+  // with a small nudge toward mass concentration. Single-macro scenes
+  // collapse to that macro's center either way.
+  let tx = bcx * 0.8 + wcx * 0.2;
+  let ty = bcy * 0.8 + wcy * 0.2;
 
   // Required half-extent to fit every macro (with halo) around the aim
-  // point. Add a little breathing room so things aren't pinned to edges.
-  const pad = 40;
-  const reqHalfW = Math.max(maxX - tx, tx - minX) + pad;
-  const reqHalfH = Math.max(maxY - ty, ty - minY) + pad;
+  // point, plus an 8% buffer so things aren't pinned to the edges.
+  const reqHalfW = Math.max(maxX - tx, tx - minX) * SMART_TRACK_FIT_BUFFER;
+  const reqHalfH = Math.max(maxY - ty, ty - minY) * SMART_TRACK_FIT_BUFFER;
 
   // Era zoom is the cap: smart tracking only ever zooms OUT from it.
   const eraZ = renderer.targetZoom;
