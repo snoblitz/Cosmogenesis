@@ -117,5 +117,9 @@ export function evaluateEra(state, sim) {
   //   Two or more structures exist; filaments can now connect them.
   if (i < 4 && sim.macros.length >= 2) return 4;
 
+  // 4 → 5 ("First Light")
+  //   At least one cradle has ignited into a star.
+  if (i < 5 && sim.macros.some(m => m.kind === 'star')) return 5;
+
   return null;
 }

@@ -255,7 +255,7 @@ function macroInspectorData(m, pinned, source = null) {
     id: m.id,
     name: m.name || null,
     tracked: !!m.tracked,
-    kind: m.mass >= MACRO_CRADLE_THRESHOLD ? 'cradle' : 'structure',
+    kind: m.kind,
     mass: m.mass,
     absorbed: m.absorbed,
     age: m.age,
@@ -312,7 +312,7 @@ function macroMenuOpts(m, clientX, clientY) {
     macroId: m.id,
     screenX: clientX,
     screenY: clientY,
-    kind: m.mass >= MACRO_CRADLE_THRESHOLD ? 'cradle' : 'structure',
+    kind: m.kind,
     name: m.name || null,
     tracked: !!m.tracked
   };

@@ -1397,7 +1397,7 @@ export class UI {
       }
       const { li, titleEl, subEl, timelineEl } = entry;
 
-      const kind = m.mass >= cradleThreshold ? 'cradle' : 'structure';
+      const kind = m.kind || (m.mass >= cradleThreshold ? 'cradle' : 'structure');
       if (li.dataset.kind !== kind) li.dataset.kind = kind;
       const isPinned = (pinnedId != null && pinnedId === m.id);
       li.classList.toggle('is-pinned', isPinned);

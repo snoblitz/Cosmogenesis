@@ -5,7 +5,7 @@
 
 import { ERAS, evaluateEra, FIRST_LIGHT_ERA } from './eras.js';
 import { findReadyWhisper } from './whispers.js';
-import { MACRO_CRADLE_THRESHOLD, YEARS_PER_SECOND } from './simulation.js';
+import { YEARS_PER_SECOND } from './simulation.js';
 
 const WHISPER_COOLDOWN_MS = 35000;
 
@@ -40,6 +40,7 @@ export class GameState {
     this.radioLensActive = false;
     this.lensVisuallyActive = false;
     this.thermalScanDone = false;
+    this.visibleScanDone = false;
 
     // Per-instrument settings, all user-adjustable from the HUD and
     // persisted across sessions. Defaults are the values the lens shipped
@@ -119,7 +120,7 @@ export class GameState {
     for (const m of sim.macros) {
       matter += m.mass;
       if (m.mass > maxMass) maxMass = m.mass;
-      if (m.mass >= MACRO_CRADLE_THRESHOLD) cradles++;
+      if (m.kind === 'cradle' || m.kind === 'star') cradles++;
     }
     this.matter = matter;
     this.structures = sim.macros.length;
@@ -167,6 +168,7 @@ export class GameState {
       radioLensActive:    this.radioLensActive,
       lensVisuallyActive: this.lensVisuallyActive,
       thermalScanDone:    this.thermalScanDone,
+      visibleScanDone:    this.visibleScanDone,
       settings:           { ...this.settings }
     };
   }
@@ -182,6 +184,7 @@ export class GameState {
     this.radioLensActive    = !!d.radioLensActive;
     this.lensVisuallyActive = !!d.lensVisuallyActive;
     this.thermalScanDone    = !!d.thermalScanDone;
+    this.visibleScanDone    = !!d.visibleScanDone;
     if (d.settings && typeof d.settings === 'object') {
       Object.assign(this.settings, d.settings);
     }
