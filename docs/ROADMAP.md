@@ -53,25 +53,47 @@ The "cosmic expansion + catalog command center" arc. First Light became an actua
 
 ---
 
-## v0.5 candidates (next session)
+## ✅ v0.5 — Shipped 2026-05-18
+
+The "Inducer modes + economy rebalance" arc. The cursor tool became the **Inducer**, a multi-mode instrument with three additional modes that unlock as the universe grows. Potential is now the only currency that matters in the early game, and it grows from physical milestones + stellar luminosity instead of a per-emission trickle. Emitters became one-shot capital investments — slow, fallible, consumed on star ignition. Era thresholds were raised so each tool gets a full era to breathe before the next one arrives. See [CHANGELOG.md](CHANGELOG.md) for the full feature list.
+
+- **Inducer modes** (cursor as multi-mode instrument): **Field** (default), **Resonance Lens** (era 2, 120 P, drag-paint), **Compression Lens** (era 4, 800 P, hold-to-charge), **Accretion Stream** (era 5, 4500 P, beam feeders into nearest macro)
+- **Per-mode cursor visuals** drawn in screen space: hum dot / double ring / charge ring (blue → white-hot + fizzle-threshold tick + full-charge halo bloom) / crosshair-and-tether-to-target
+- **Instruments panel restructured** into three subsections (Sensors / Upgrades / Tools), mirroring the Catalog's pattern
+- **Emitter rebalance**: 50 → 250 P base cost, 0.5 → 0.2 Hz, **10 s calibration window**, **10% catastrophic dud rate**, **consumed on star ignition**
+- **Calibration UI**: live `Calibrating Ns` badge on each deployed emitter row, urgent red in final 3 s
+- **Potential income overhaul**: `onMacroBirth +5`, `onCradleCross +10`, `onStarIgnite +100`, **per-second stellar luminosity income** (`factor * log10(mass)` per active star, log-scaled)
+- **Era threshold rebalance**: 0→1 (40 → 80 spawns), 1→2 (140 → 280 particles), 2→3 (1 macro AND 500 spawned), 3→4 (3 macros AND max mass ≥ 200)
+- **Tool gates pushed**: Resonance era 1→2, Compression era 3→4, Accretion era 4→5, Emitters era 3→4
+- **Onboarding whispers**: `inducer-resonance` / `inducer-compression` / `inducer-accretion` fire once on first unlock with plain-language guidance
+- **Save migration**: legacy saves without `unlockedInducerModes` infer the set from `eraIndex`; legacy emitters without calibration fields are marked `stable: true`
+
+---
+
+## v0.6 candidates (next session)
 
 The natural next moves, in rough order of leverage:
 
-### 1. Emitter economy rebalance
+### 1. Visual + audio polish on the Inducer economy
 
-Per Jeff: "currently very broken". Needs a real design pass.
-- Cost curve vs. throughput vs. macro feeding rate — the loop should be self-sustaining without being trivially exploitable.
-- Differentiated emitter modes? (e.g. cold drift emitter vs. dense feeder vs. directional jet)
-- Visual + audio polish on the emission pulse so each tick reads as a real event.
+The v0.5 economy works numerically but a few feedback loops are still silent or invisible:
+- Brief inward streak from each consumed emitter to the igniting cradle (close the "sacrifice converts into a star" loop visually)
+- Whisper or audio cue on emitter dud reveal (currently silent removal)
+- Per-second stellar income readout in the HUD so players connect star count to growth rate
+- Integer rounding for `state.potential` display (it accrues per-frame and is now non-integer under the hood)
 
-### 2. Particle cap eviction policy
+### 2. Full era 1 → 5 pacing playtest
+
+The v0.5 rebalance landed but real-session feedback is still pending. A scripted Playwright session that drives a fresh universe through era 5 + verifies pacing feels right + measures time-in-each-era would catch any remaining trouble spots.
+
+### 3. Particle cap eviction policy
 
 `spawnParticleWithVelocity` currently evicts the oldest low-mass particle when at cap. Post-First-Light this preferentially evicts cosmic-seeded dust, slowly eroding the sandbox. Either:
 - **Keep as-is** and call it canon (universe consolidates as you act), OR
 - Tag cosmic-seeded particles with a `cosmic: true` flag and prefer evicting player-spawned particles first, OR
 - Mass-weighted eviction (lighter particles always go first regardless of age).
 
-### 3. Spectrum filter (Phase B)
+### 4. Spectrum filter (Phase B)
 
 When Visible Lens is unlocked, give the player a **lens spectrum selector**: Radio / Infrared / Visible / UV / X-ray. Each shows the same simulation through a different visual treatment.
 
@@ -83,29 +105,29 @@ When Visible Lens is unlocked, give the player a **lens spectrum selector**: Rad
 
 This makes the player *the astronomer*. Choose your wavelength.
 
-### 4. Body lineage polish (carried from v0.4 backlog)
+### 5. Body lineage polish (carried from v0.4 backlog)
 
 - **Lineage view**: clicking a body's "Absorbed {Target}" event in its history could navigate (or hover-preview) the absorbed body's history.
 - **Catalog filters / sort**: filter by kind, sort by age / mass / tracked-time. Useful once players have 20+ tracked bodies.
 - **Catalog export**: a tiny "copy as JSON" or "copy as text summary" for sharing your cosmic family tree.
 
-### 5. Ambient music layer
+### 6. Ambient music layer
 
 Soft procedural pad underneath the bells, also in A minor pentatonic so it harmonizes with detection sounds. Slow chord progression: i - VI - III - VII (Am - F - C - G) on a 30-second loop, very low volume by default.
 
 Pure synthesis — no audio files. Same Web Audio API. Add to `audio.js` as `playAmbientLayer()` with volume control in global settings.
 
-### 6. Sound on history milestones
+### 7. Sound on history milestones
 
 When a macro crosses the cradle threshold or gets absorbed, play a brief audio marker. Currently history events fire silently in the simulation; pairing them with a subtle sound would let players *hear* their tracked bodies' significant moments without watching the catalog.
 
-### 7. Refactor: `_createParticle` helper
+### 8. Refactor: `_createParticle` helper
 
 Unify the two parallel particle-creation paths (`spawnParticleWithVelocity` + the direct-push in `seedCosmicMatter`) behind one helper. Not a bug — future-proofs new seeding flavors (supernovae remnants, future-era dust events).
 
 ---
 
-## v0.5+ candidates
+## v0.6+ candidates
 
 ### Era 6, 7, 8...
 

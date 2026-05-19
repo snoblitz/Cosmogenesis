@@ -4,6 +4,89 @@ All notable changes to Cosmogenesis. Versioning follows roughly [Semantic Versio
 
 ---
 
+## v0.5.0 — *2026-05-18 (Monday)* — Inducer modes + economy rebalance
+
+v0.5 reshapes the early- and mid-game economy around a single primary currency (**Potential**), introduces the **Inducer** as a multi-mode cursor instrument, and turns emitters from passive income trickles into one-shot capital investments. The cursor is no longer "the way you click"; it is the *first instrument you operate*, and it grows alongside the cosmos through three additional mode unlocks. Era thresholds were raised so each tool gets a full era to breathe before the next one arrives.
+
+### The Inducer — cursor as instrument
+
+The cursor tool now has a name (**the Inducer**) and four selectable modes, each with a distinct physical signature in the field and a distinct on-screen cursor glyph:
+
+- **Field** (era 0, default, free, mass 1) — the original tap / hold trickle. +1 Potential per spawn. Cursor: small soft hum dot.
+- **Resonance Lens** (era 2, 120 P, mass 3) — drag-paint spray. +1 Potential per packet. Cursor: double pulsing ring (violet).
+- **Compression Lens** (era 4, 800 P, mass up to 25) — hold to charge, release to fire. Sub-20% charge fizzles. +1 Potential per release. Cursor: charge ring grows blue → white-hot with a fizzle-threshold tick + a full-charge halo bloom, then a screen-space flash on release.
+- **Accretion Stream** (era 5 / First Light, 4500 P, mass 2 feeders) — beam mass-2 feeders directly into the nearest macro within ~220 px. Particles carry a `feeder: true` flag so they're absorbed instead of promoting into new macros. **No Potential earned** (it's the only mode that pure-sinks Potential into concentrated mass). Cursor: orange crosshair + animated dashed tether to the targeted macro + reticle on target.
+
+Mode dispatch lives in `main.js` (`spawnAtScreen` / `tickHold` / `endHold`). The renderer learns the active mode each frame via `renderer.setInducerCursor(modeId, opts)` and draws a screen-space overlay in `_drawInducerCursor`, so the cursor reads consistently regardless of zoom.
+
+### Instruments panel — three subsections
+
+The Instruments panel was restructured into three collapsible subsections, mirroring the Catalog's Tracked / Deployed pattern:
+
+- **Sensors** — Radio / Thermal / Visible Lenses (the existing toggles).
+- **Upgrades** — the Inducer mode selector. Rows have three states: **locked** (era N required), **available** (cost in P, click to unlock + auto-select), **unlocked** (click to set active, `.is-active` highlight on the current mode). Tooltips on hover spell out what each mode does in plain language.
+- **Tools** — wraps the Deploy Emitter affordance. Hidden until the emitter era gate is reached.
+
+### Emitter rebalance — capital, not income
+
+Emitters stop being a passive +1 Potential trickle and become a meaningful one-shot investment:
+
+- **Base cost up 50 → 250 P** (still doubles per active emitter).
+- **Rate down 0.5 Hz → 0.2 Hz** (one mass-60 packet every 5 s — slow but enough to feed a cradle alone if the player is patient).
+- **10 s calibration window** before any emission. The deployed-list row shows a live `Calibrating Ns` badge that turns urgent red in the final 3 s.
+- **10% catastrophic dud rate** (`EMITTER_DUD_CHANCE`) — the dud is rolled deterministically at deploy time so saves/loads are stable, but visually revealed at the end of calibration (silent disappearance from the deployed list).
+- **Consumed on star ignition**: every emitter within 400 px world units of an igniting cradle is removed and fires `onEmitterConsumed`. The "dropping an emitter is a sacrifice that converts into a star" narrative motivates the new cost.
+- **Era gate pushed 3 → 4** (Cosmic Web) so emitters arrive after Compression Lens, not before.
+
+### Potential income — milestone events + per-second stellar luminosity
+
+The +1-per-emission trickle is gone. Potential now grows from physical milestones plus an ongoing per-second income proportional to the stellar luminosity the player has built:
+
+- **`onMacroBirth`** — a particle condenses into a macro: **+5 P**.
+- **`onCradleCross`** — a macro crosses the cradle threshold (mass 500): **+10 P**.
+- **`onStarIgnite`** — a cradle ignites (mass 1500): **+100 P**.
+- **Per-second stellar income** — every active star contributes `POTENTIAL_STELLAR_FACTOR * log10(mass)` Potential per second. Log-scaled so a single giant doesn't dominate; many medium stars pay almost as much as one huge one. Roughly 9.5 P/s freshly ignited, ~12 P/s at 10 k mass.
+
+### Era threshold rebalance
+
+Per playtest feedback ("got all tools in 2 minutes"), the early eras now last long enough for the player to actually inhabit each tool before the next one unlocks:
+
+- **0 → 1** (Field Awakens): `totalSpawned ≥ 40` → **≥ 80**
+- **1 → 2** (Matter Learns): `particles.length ≥ 140` → **≥ 280**
+- **2 → 3** (Structure Emerges): `≥ 1 macro` → `≥ 1 macro AND totalSpawned ≥ 500` (stops a Resonance burst from shotgunning straight to macros)
+- **3 → 4** (Cosmic Web): `≥ 2 macros` → `≥ 3 macros AND maxMacroMass ≥ 200` (prevents the era from triggering on three tiny same-second condensations)
+- **4 → 5** (First Light): unchanged — still gated on the first star.
+
+### Onboarding whispers
+
+Three new whispers fire once on first unlock of each Inducer mode, explaining how to use it in cosmic-poetic register:
+
+- `inducer-resonance` — *"The Resonance Lens holds. Drag your finger across the field — what you trace becomes substance."*
+- `inducer-compression` — *"Press and hold. Let the Compression Lens gather, then release a denser seed than your hand alone could offer."*
+- `inducer-accretion` — *"Aim near a gravity well. The Accretion Stream feeds it directly — no Potential earned, but mass concentrated where you choose."*
+
+### State + save migration
+
+- New `inducerMode` (string), `unlockedInducerModes` (Set, persisted as array), `compressionCharge` (transient, recomputed) fields on `GameState`.
+- New per-emitter `calibrationStartS` / `calibrationUntilS` / `stable` / `isDud` fields.
+- Migration: legacy saves without `unlockedInducerModes` infer the set from `eraIndex` (any mode whose `eraGate ≤ current era` is granted). Legacy emitters without calibration fields are marked `stable: true` so they don't go silent on reload.
+
+### Refactor + helpers
+
+- `sim.spawnParticleWithVelocity` now accepts a `feeder: true` flag; feeders skip the particle → macro auto-promotion path so Accretion can pump mass into existing macros without spawning competing ones.
+- New `sim._consumeEmittersAround(x, y, radius, igniter)` helper, called from `_promoteAutoNames` on star ignition.
+- New `state.update(sim, renderer, dt)` signature — `dt` is now threaded through so the per-second stellar income accrues continuously instead of per-tick.
+- New `renderer.setInducerCursor(modeId, opts)`, `renderer.addInducerFlash(sx, sy, intensity)`, `renderer.worldToScreenInternal(wx, wy)`. The cursor overlay draws in screen space after the world layer + lens overlays, suppressed during emitter placement (which already has its own ghost glyph).
+
+### Known follow-ups
+
+- **Visual flare on emitter consumption** at ignition: the star side has the existing ignition animation, but the consumed emitters disappear silently. A brief inward streak from each consumed emitter to the igniting cradle would close the loop.
+- **Whisper / toast on emitter dud**: currently a silent removal at the end of calibration. A short whisper or audio cue would acknowledge the 10% failure tail.
+- **Stellar income display**: `state.potential` is now non-integer (we accrue per-frame). UI still renders fine via `fmt()`, but a per-second income readout would help the player connect star count to growth rate.
+- **Playtest pass for full era 1 → 5 pacing** is queued — the rebalance landed but real-session feedback is still pending.
+
+---
+
 ## v0.4.0 — *2026-05-18 (Monday)* — Cosmic expansion + catalog command center
 
 From v0.3 to v0.4, Cosmogenesis grew from "a small luminous pocket" to "a sandbox you genuinely inhabit". First Light now triggers an actual **cosmic expansion event** — the world bounds explode ~50×, thousands of cosmic-dust particles seed the outer void, and the camera pulls way back to reveal it. The Catalog became a real command center with subsections, quick actions, and click-to-inspect for deployed emitters. The Visible Lens picked up customization. And the manual zoom-out now has a soft floor so the player never sees the seeded universe's rectangular edge.

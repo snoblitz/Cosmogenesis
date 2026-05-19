@@ -50,6 +50,24 @@ This affects everything:
 - The thermal "view" is a **dim sensor mode**, not "the real universe at low brightness". Real visible light only appears at First Light.
 - Settings let players *tune their instruments*, not *upgrade their power*.
 
+### Inducer modes — special case (v0.5+)
+
+The **Inducer** (the cursor tool) is itself framed as an instrument the player operates, not a stat-bearing weapon. It begins in **Field** mode (the original tap / hold trickle) and earns three additional **modes** as the universe grows:
+
+- **Resonance Lens** — a paint-along-the-cursor-path mode
+- **Compression Lens** — a hold-to-charge, release-to-fire mode
+- **Accretion Stream** — a directed feeder beam aimed at the nearest macro
+
+Each is **a different way of operating the same instrument**, not a "+10% potential" or "faster cursor" upgrade. They have distinct physical signatures (packet mass, cadence, targeting behavior) and distinct on-screen cursor glyphs. The player isn't getting *more powerful*; they're getting *more articulate*. Each new mode opens a different conversation with the field — Resonance lets you stripe potential along a curve; Compression lets you spend it as a single denser seed; Accretion lets you sink it directly into a structure without paying for promotion.
+
+This stays within the "instruments, not upgrades" rule because:
+1. **No multiplier creep.** A Resonance packet is mass 3, not "mass 1 × 3 power upgrade". Compression maxes at mass 25, fixed. Accretion feeders are mass 2 each.
+2. **Modes are toggleable.** The player can always return to Field. Nothing the upgrade chain "took away" from the original tool.
+3. **Each mode has a tradeoff, not just a benefit.** Accretion earns *zero* Potential per spawn. Compression sub-20%-charge releases fizzle. Resonance costs more Potential per total mass than Field.
+4. **The instrument's voice doesn't change.** The Inducer is still "the player's hand in the field". The modes are *how* the hand operates, not what it has been replaced with.
+
+When adding future modes (e.g. a destabilization tool that scatters a clustered group, or a tuning fork that triggers resonance between two macros), apply the same test: is this *another way to operate the cursor*, or is it a power-up? If the latter, redesign.
+
 ---
 
 ## Discovered laws, not unlocked abilities

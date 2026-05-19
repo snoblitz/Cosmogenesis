@@ -4,7 +4,7 @@
 
 **Cosmogenesis** is a physics-driven incremental cosmic observatory. You add potential to an empty void. Radio instruments detect what you've made before you can see it. Eventually the thermal lens reveals the universe, First Light paints it into the visible spectrum, and matter learns to gather, condense, and connect into a glowing cosmic web. Bodies that emerge have names, can be tracked, and carry life histories you can read. It is meditative, scientific, and unfolds through discovered laws of reality rather than upgrade trees.
 
-**Version:** v0.4 (May 18, 2026)
+**Version:** v0.5 (May 18, 2026)
 
 **Play it:** https://snoblitz.github.io/Cosmogenesis/
 
@@ -24,7 +24,7 @@ The repo is also a fully static site — any plain HTTP file server works. GitHu
 
 ---
 
-## What's here today (v0.4)
+## What's here today (v0.5)
 
 ### From v0.1
 - **5 implemented eras** (of 13 designed): The First Particle, The Field Awakens, Matter Learns to Gather, Structure Emerges, The Cosmic Web
@@ -65,6 +65,24 @@ The repo is also a fully static site — any plain HTTP file server works. GitHu
   - Click an emitter row title to pin an amber **Emitter Inspector** popup with leader line. Dismiss with another click, a canvas tap, Escape, delete, or recenter.
 - **Dense color-varied starfield** (220 → 1400 stars) + **zoom indicator pill** + camera tutorial toast (device-aware) at the cosmic reveal moment.
 
+### New in v0.5
+- **The Inducer** — the cursor tool is now a named multi-mode instrument with four modes, each with a distinct physical signature and a distinct on-screen cursor glyph:
+  - **Field** (era 0, default, mass 1) — the original tap / hold trickle. Cursor: small soft hum dot.
+  - **Resonance Lens** (era 2, 120 P, mass 3) — drag-paint spray. Cursor: double pulsing violet ring.
+  - **Compression Lens** (era 4, 800 P, up to mass 25) — hold to charge, release to fire. Sub-20% charge fizzles. Cursor: charge ring grows blue → white-hot, with a fizzle-threshold tick + full-charge halo bloom, and a screen-space flash on release.
+  - **Accretion Stream** (era 5, 4500 P, mass 2 feeders) — beam mass-2 feeders directly into the nearest macro. No Potential earned (it's the only mode that pure-sinks Potential into mass). Cursor: orange crosshair + animated dashed tether to the targeted macro + reticle on target.
+- **Instruments panel restructured** into three collapsible subsections — **Sensors** (lenses) / **Upgrades** (Inducer modes) / **Tools** (Deploy Emitter) — mirroring the Catalog's Tracked/Deployed pattern.
+- **Emitter rebalance** — emitters are now one-shot capital investments, not passive income:
+  - Base cost **50 → 250 P**, rate **0.5 → 0.2 Hz**, era gate **3 → 4**.
+  - **10 s calibration window** before the emitter fires; deployed-list row shows a live `Calibrating Ns` badge, urgent red in the final 3 s.
+  - **10% catastrophic dud rate** — rolled at deploy time, revealed at calibration end.
+  - **Consumed on star ignition** — every emitter within 400 px world units of an igniting cradle is removed. Dropping an emitter near a feeding cradle is a sacrifice that converts into a star.
+- **Potential income overhaul** — the +1-per-emission trickle is gone. Potential now grows from physical milestones plus per-second stellar luminosity:
+  - **`onMacroBirth` +5**, **`onCradleCross` +10**, **`onStarIgnite` +100**.
+  - **Per-second stellar income**: every active star contributes `3 × log10(mass)` P per second. Log-scaled so a single giant doesn't dominate; many medium stars pay almost as much as one huge one.
+- **Era threshold rebalance** so each tool gets a full era to breathe before the next one unlocks: era 1 needs 80 spawns (was 40); era 2 needs 280 particles (was 140); era 3 needs a macro **and** 500 total spawned; era 4 needs 3 macros **and** max-macro-mass ≥ 200.
+- **Onboarding whispers** fire once on first unlock of each Inducer mode (`inducer-resonance`, `inducer-compression`, `inducer-accretion`) with plain-language guidance on how to use each mode.
+
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for the full version-by-version feature list.
 
 ---
@@ -73,8 +91,8 @@ See [docs/CHANGELOG.md](docs/CHANGELOG.md) for the full version-by-version featu
 
 1. **[docs/DESIGN.md](docs/DESIGN.md)** — the philosophy. *Why* the game is shaped this way. Read this first.
 2. **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how the code is structured. Module-by-module breakdown.
-3. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — what shipped in v0.1 through v0.4.
-4. **[docs/ROADMAP.md](docs/ROADMAP.md)** — what's next. v0.5 candidates: emitter economy rebalance, particle eviction policy, spectrum filter, body-lineage polish.
+3. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — what shipped in v0.1 through v0.5.
+4. **[docs/ROADMAP.md](docs/ROADMAP.md)** — what's next. v0.6 candidates: Inducer economy visual/audio polish, full era 1→5 pacing playtest, particle eviction policy, spectrum filter, body-lineage polish.
 5. **[docs/SESSION_LOG.md](docs/SESSION_LOG.md)** — the origin story. How v0.1, v0.2, and onward came together.
 
 ---
