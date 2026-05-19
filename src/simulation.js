@@ -10,9 +10,20 @@ export const MACRO_MASS_THRESHOLD = 25; // mass at which a particle promotes to 
 export const MAX_MACROS = 40;           // cap macros to keep render cheap
 export const MACRO_CRADLE_THRESHOLD = 500; // mass at which a macro is a "Cradle" (rare, meaningful)
 export const STAR_IGNITION_THRESHOLD = 1500;
-export const EMITTER_RATE_HZ = 0.5;       // particles per second per active emitter
+export const EMITTER_RATE_HZ = 0.2;       // v0.5: slowed from 0.5 → one emission per 5s. Singles slow-burn to ignition; multiples buy speed.
 export const EMITTER_PARTICLE_MASS = 60;
 export const EMITTER_ERA_GATE = 3;        // earliest era index that allows deploy
+// v0.5: calibration phase before an emitter starts emitting. 10s visible
+// countdown in the deployables list. At the end of the countdown, the
+// emitter either stabilizes OR catastrophically duds (10% chance) and
+// dissolves. The roll is deterministic at deploy time so save/load is
+// stable, but the visual reveal happens when the countdown hits zero.
+export const EMITTER_CALIBRATION_S = 10;
+export const EMITTER_DUD_CHANCE = 0.10;
+// When a star ignites, any emitters within this radius are consumed by the
+// flare — narrative: their matter is drawn into the new star. Mechanical:
+// caps emitter accumulation; each is a one-shot conversion device.
+export const EMITTER_CONSUME_RADIUS = 400;
 // Cosmic time scale: every real second of sim time represents this many years
 // in the player-facing universe. Internal dt math stays in real seconds; this
 // only affects what we *show* the player (auto-name suffix, ages, etc.).
@@ -59,6 +70,17 @@ export class Simulation {
     this.totalSpawned = 0;
     this.totalElapsedS = 0;  // simulation timeline in seconds (used for auto-naming)
     this.onEmitterEmit = null;
+    // v0.5 milestone callbacks. main.js wires these to GameState income hooks.
+    // The simulation never reaches into state; state listens to the sim.
+    this.onMacroBirth = null;
+    this.onCradleCross = null;
+    this.onStarIgnite = null;
+    // Fires when calibration completes and the emitter survives.
+    this.onEmitterStabilize = null;
+    // Fires when an emitter catastrophically duds (calibration end + bad roll).
+    this.onEmitterDud = null;
+    // Fires when a star ignition consumes an emitter within radius.
+    this.onEmitterConsumed = null;
     // Runtime caps (overridable per-era). Default to the historical micro-era
     // values; First Light bumps them to make room for the expanded cosmos.
     this.particleCap = MAX_PARTICLES;
@@ -184,6 +206,12 @@ export class Simulation {
   }
 
   deployEmitterAt(x, y) {
+    // v0.5: emitters now go through a 10-second calibration phase before
+    // emitting. 10% of placements are duds — they dissolve at calibration
+    // end with no emissions. The dud roll is captured at deploy time so
+    // saves are deterministic; the reveal happens visually when the
+    // countdown completes.
+    const isDud = Math.random() < EMITTER_DUD_CHANCE;
     const emitter = {
       id: this._nextEmitterId++,
       x,
@@ -191,7 +219,13 @@ export class Simulation {
       paused: false,
       hidden: false,
       accum: 0,
-      emitted: 0
+      emitted: 0,
+      // Calibration tracked against sim time (totalElapsedS) so it pauses
+      // with the rest of the simulation and serializes cleanly.
+      calibrationStartS: this.totalElapsedS,
+      calibrationUntilS: this.totalElapsedS + EMITTER_CALIBRATION_S,
+      isDud,
+      stable: false
     };
     this.emitters.push(emitter);
     return emitter;
@@ -350,9 +384,17 @@ export class Simulation {
           this.particles.splice(i, 1);
           continue;
         }
+        // v0.5: feeder particles (from Accretion Stream) never auto-promote.
+        // They exist to feed an existing macro via merge participation; if
+        // they miss the host they just drift and decay naturally.
+        if (p.feeder) continue;
         if (this.macros.length < this.macroCap) {
-          this.macros.push(this._promoteToMacro(p));
+          const newMacro = this._promoteToMacro(p);
+          this.macros.push(newMacro);
           this.particles.splice(i, 1);
+          if (typeof this.onMacroBirth === 'function') {
+            this.onMacroBirth(newMacro);
+          }
         }
       }
     }
@@ -364,7 +406,29 @@ export class Simulation {
 
     // 7. Emitters: standalone world entities that spray dense packets outward
     // in random directions. Gravity determines what they ultimately feed.
-    for (const emitter of this.emitters) {
+    // v0.5: each emitter goes through a 10s calibration phase before any
+    // emissions. 10% are duds and dissolve at calibration end. Survivors
+    // emit at EMITTER_RATE_HZ until consumed by a nearby ignition.
+    for (let ei = this.emitters.length - 1; ei >= 0; ei--) {
+      const emitter = this.emitters[ei];
+      // Calibration phase: no emissions until completion.
+      if (!emitter.stable && emitter.calibrationUntilS !== undefined) {
+        if (this.totalElapsedS < emitter.calibrationUntilS) {
+          continue;
+        }
+        // Calibration complete: dud or stabilize.
+        if (emitter.isDud) {
+          this.emitters.splice(ei, 1);
+          if (typeof this.onEmitterDud === 'function') {
+            this.onEmitterDud(emitter);
+          }
+          continue;
+        }
+        emitter.stable = true;
+        if (typeof this.onEmitterStabilize === 'function') {
+          this.onEmitterStabilize(emitter);
+        }
+      }
       if (emitter.paused) continue;
       emitter.accum += dt;
       const interval = 1 / EMITTER_RATE_HZ;
@@ -379,8 +443,8 @@ export class Simulation {
           Math.sin(angle) * speed,
           // Dense packet: 0.97 retention means particles must exceed ~3% of
           // the macro's mass to net-grow it. Mass 60 stays positive past the
-          // ignition target (1500 * 0.031 ≈ 46) and gives a satisfying feed
-          // rate of ~12-25 mass/sec at 0.5Hz emission.
+          // ignition target (1500 * 0.031 ≈ 46) so a single emitter can
+          // eventually push a cradle past 1500 — slowly, at 0.2 Hz.
           { mass: EMITTER_PARTICLE_MASS, r: 3.4, hue: 38 + Math.random() * 18 }
         );
         emitter.emitted = (emitter.emitted || 0) + 1;
@@ -397,6 +461,24 @@ export class Simulation {
     this._promoteAutoNames();
   }
 
+  _consumeEmittersAround(x, y, radius, igniter) {
+    // v0.5: when a star ignites, emitters within `radius` are pulled into
+    // the new star. Their matter is the same matter that fed the cradle.
+    // Caps emitter sprawl: each placement is one shot at conversion.
+    const r2 = radius * radius;
+    for (let i = this.emitters.length - 1; i >= 0; i--) {
+      const e = this.emitters[i];
+      const dx = e.x - x;
+      const dy = e.y - y;
+      if (dx * dx + dy * dy <= r2) {
+        this.emitters.splice(i, 1);
+        if (typeof this.onEmitterConsumed === 'function') {
+          this.onEmitterConsumed(e, igniter);
+        }
+      }
+    }
+  }
+
   _promoteAutoNames() {
     for (const m of this.macros) {
       if (m.mass >= MACRO_CRADLE_THRESHOLD) {
@@ -410,6 +492,9 @@ export class Simulation {
             kind: 'cradle',
             mass: m.mass
           });
+          if (typeof this.onCradleCross === 'function') {
+            this.onCradleCross(m);
+          }
         }
         if (m.kind === 'structure') m.kind = 'cradle';
         // Name promotion: only rewrite if the name still matches the exact
@@ -437,6 +522,13 @@ export class Simulation {
           mass: m.mass,
           prevName: oldName
         });
+        if (typeof this.onStarIgnite === 'function') {
+          this.onStarIgnite(m);
+        }
+        // v0.5: consume emitters within radius — they fed the star into
+        // being, and the ignition flare draws their matter in. One-shot
+        // economic conversion: Potential → emitter → star.
+        this._consumeEmittersAround(m.x, m.y, EMITTER_CONSUME_RADIUS, m);
       }
     }
   }
@@ -604,7 +696,13 @@ export class Simulation {
         paused: e.paused,
         hidden: !!e.hidden,
         accum: e.accum,
-        emitted: typeof e.emitted === 'number' ? e.emitted : 0
+        emitted: typeof e.emitted === 'number' ? e.emitted : 0,
+        // v0.5 calibration / dud state. Saved relative to totalElapsedS so
+        // reloads in mid-calibration resume correctly.
+        calibrationStartS: typeof e.calibrationStartS === 'number' ? e.calibrationStartS : null,
+        calibrationUntilS: typeof e.calibrationUntilS === 'number' ? e.calibrationUntilS : null,
+        isDud: !!e.isDud,
+        stable: !!e.stable
       })),
       nextId: this.nextId,
       eraLevel: this.eraLevel,
@@ -688,7 +786,15 @@ export class Simulation {
           paused: !!e.paused,
           hidden: !!e.hidden,
           accum: typeof e.accum === 'number' ? e.accum : 0,
-          emitted: typeof e.emitted === 'number' ? e.emitted : 0
+          emitted: typeof e.emitted === 'number' ? e.emitted : 0,
+          // v0.5: migration — legacy saves had no calibration fields. Mark
+          // them as already-stable so they continue working without a
+          // freshly-imposed 10s wait. New deploys go through deployEmitterAt
+          // which sets the proper calibration state.
+          calibrationStartS: typeof e.calibrationStartS === 'number' ? e.calibrationStartS : null,
+          calibrationUntilS: typeof e.calibrationUntilS === 'number' ? e.calibrationUntilS : null,
+          isDud: !!e.isDud,
+          stable: e.stable === undefined ? true : !!e.stable
         });
       }
     }

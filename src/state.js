@@ -7,9 +7,68 @@ import { ERAS, evaluateEra, FIRST_LIGHT_ERA } from './eras.js';
 import { findReadyWhisper, WHISPERS } from './whispers.js';
 import { YEARS_PER_SECOND } from './simulation.js';
 
-export const EMITTER_COST_BASE = 50;
+// v0.5: Emitter base cost up from 50 → 250. Emitters are now capital
+// investment, not income. They convert Potential into a star via mass-60
+// packets; they pay back through the macro-birth / cradle-cross / star-ignite
+// milestone events and the per-second stellar luminosity income their work
+// eventually creates.
+export const EMITTER_COST_BASE = 250;
 export function emitterDeployCost(activeCount) {
   return EMITTER_COST_BASE * Math.pow(2, activeCount);
+}
+
+// Potential income payouts on physical threshold events. These replace the
+// per-emission +1 trickle that emitters used to print. The new economy
+// rewards causing things to happen, not just owning a meter.
+export const POTENTIAL_MACRO_BIRTH  = 5;    // a particle condenses into a macro
+export const POTENTIAL_CRADLE_CROSS = 10;   // a macro crosses mass 500
+export const POTENTIAL_STAR_IGNITE  = 100;  // a cradle ignites (mass 1500)
+// Per-second per-star luminosity income = factor * log10(mass). Log scaling
+// prevents a single giant from dominating the economy; many medium stars
+// pay almost as much as one huge one.
+export const POTENTIAL_STELLAR_FACTOR = 3;
+
+// Inducer modes — selectable spawn behaviors for the cursor tool ("the
+// Inducer"). Each mode unlocks behind BOTH an era gate AND a one-time
+// Potential payment. Field is the default and always available.
+export const INDUCER_MODES = {
+  field: {
+    id: 'field',
+    label: 'Field',
+    description: 'Default tap / hold trickle. Mass-1 packets.',
+    eraGate: 0,
+    unlockCost: 0,
+    packetMass: 1
+  },
+  resonance: {
+    id: 'resonance',
+    label: 'Resonance Lens',
+    description: 'Drag-paint to spray mass-3 packets along the cursor path.',
+    eraGate: 1,
+    unlockCost: 50,
+    packetMass: 3
+  },
+  compression: {
+    id: 'compression',
+    label: 'Compression Lens',
+    description: 'Hold to charge a mass-25 packet; release to fire.',
+    eraGate: 3,
+    unlockCost: 500,
+    packetMass: 25,
+    chargeTimeS: 1.5
+  },
+  accretion: {
+    id: 'accretion',
+    label: 'Accretion Stream',
+    description: 'Beam mass-2 feeders into a macro. Feeds without promoting.',
+    eraGate: 4,
+    unlockCost: 3000,
+    packetMass: 2
+  }
+};
+
+export function inducerModeList() {
+  return ['field', 'resonance', 'compression', 'accretion'].map(id => INDUCER_MODES[id]);
 }
 
 const WHISPER_COOLDOWN_MS = 35000;
@@ -71,6 +130,16 @@ export class GameState {
     // doesn't fight the era-zoom + camera reframe. Not persisted (purely
     // transient UX).
     this.smartTrackingSuppressUntil = 0;
+
+    // v0.5 Inducer system. The cursor tool has four selectable modes; only
+    // Field is available at game start. Other modes are unlocked by paying
+    // Potential AFTER the corresponding era is reached. unlockedInducerModes
+    // is serialized as an array but lives in memory as a Set for O(1) lookups.
+    this.inducerMode = 'field';
+    this.unlockedInducerModes = new Set(['field']);
+    // Compression Lens charge progress in seconds (0..chargeTimeS). Resets on
+    // release or mode change. Not persisted — transient input state.
+    this.compressionCharge = 0;
 
     // Per-instrument settings, all user-adjustable from the HUD and
     // persisted across sessions. Defaults are the values the lens shipped
@@ -158,11 +227,71 @@ export class GameState {
     this.lastInteractionAt = now;
   }
 
-  update(sim, renderer) {
+  // ---- Inducer mode API ----
+  // True when the player meets the era gate AND has the Potential to pay.
+  canUnlockInducerMode(modeId) {
+    const m = INDUCER_MODES[modeId];
+    if (!m) return false;
+    if (this.unlockedInducerModes.has(modeId)) return false;
+    if (this.eraIndex < m.eraGate) return false;
+    return this.potential >= m.unlockCost;
+  }
+
+  // True when the mode is available to select (era reached, even if not yet
+  // purchased). UI uses this to decide between "locked / era required" and
+  // "available to unlock for X P".
+  inducerModeEraReached(modeId) {
+    const m = INDUCER_MODES[modeId];
+    if (!m) return false;
+    return this.eraIndex >= m.eraGate;
+  }
+
+  isInducerModeUnlocked(modeId) {
+    return this.unlockedInducerModes.has(modeId);
+  }
+
+  unlockInducerMode(modeId) {
+    if (!this.canUnlockInducerMode(modeId)) return false;
+    const m = INDUCER_MODES[modeId];
+    this.potential -= m.unlockCost;
+    this.unlockedInducerModes.add(modeId);
+    if (this.requestSave) this.requestSave();
+    return true;
+  }
+
+  setInducerMode(modeId) {
+    if (!this.isInducerModeUnlocked(modeId)) return false;
+    if (this.inducerMode === modeId) return true;
+    this.inducerMode = modeId;
+    this.compressionCharge = 0;
+    if (this.requestSave) this.requestSave();
+    return true;
+  }
+
+  currentInducerMode() {
+    return INDUCER_MODES[this.inducerMode] || INDUCER_MODES.field;
+  }
+
+  // ---- Potential income hooks ----
+  // Called by simulation.js when physical threshold events occur. Each one
+  // pays a one-shot Potential reward. Star ignition is the big one because
+  // it's the gate to passive stellar luminosity income.
+  onMacroBirth(_macro) {
+    this.potential += POTENTIAL_MACRO_BIRTH;
+  }
+  onCradleCross(_macro) {
+    this.potential += POTENTIAL_CRADLE_CROSS;
+  }
+  onStarIgnite(_macro) {
+    this.potential += POTENTIAL_STAR_IGNITE;
+  }
+
+  update(sim, renderer, dt = 0) {
     // Recompute live totals
     let matter = 0;
     let maxMass = 0;
     let cradles = 0;
+    let stellarIncomePerSec = 0;
     for (const p of sim.particles) {
       matter += p.mass;
       if (p.mass > maxMass) maxMass = p.mass;
@@ -171,6 +300,15 @@ export class GameState {
       matter += m.mass;
       if (m.mass > maxMass) maxMass = m.mass;
       if (m.kind === 'cradle' || m.kind === 'star') cradles++;
+      if (m.kind === 'star' && m.mass > 1) {
+        // log10(mass) * factor per second. log10(1500) ≈ 3.18, so a freshly
+        // ignited star pays ~9.5 P/s; a 10k-mass behemoth pays ~12 P/s. The
+        // sublinear curve prevents one giant from dwarfing the rest.
+        stellarIncomePerSec += POTENTIAL_STELLAR_FACTOR * Math.log10(m.mass);
+      }
+    }
+    if (stellarIncomePerSec > 0 && dt > 0) {
+      this.potential += stellarIncomePerSec * dt;
     }
     this.matter = matter;
     this.structures = sim.macros.length;
@@ -287,6 +425,8 @@ export class GameState {
       visibleScanDone:    this.visibleScanDone,
       firstLightExpansionDone: this.firstLightExpansionDone,
       cameraTutorialShown: this.cameraTutorialShown,
+      inducerMode: this.inducerMode,
+      unlockedInducerModes: Array.from(this.unlockedInducerModes),
       settings:           { ...this.settings }
     };
   }
@@ -306,6 +446,27 @@ export class GameState {
     this.visibleScanDone    = !!d.visibleScanDone;
     this.firstLightExpansionDone = !!d.firstLightExpansionDone;
     this.cameraTutorialShown = !!d.cameraTutorialShown;
+
+    // Inducer migration: 'field' is always unlocked. If the save has an
+    // explicit list, honor it (filtered to known modes). If the save predates
+    // the Inducer system (no field), grant whatever the player's eraIndex
+    // would have qualified them to unlock — they earned the era, so they get
+    // the option to use the mode. They still have to pay to ACTIVATE? No:
+    // the goal of migration is to not regress a player's options, so grant
+    // outright unlock for any era they already cleared.
+    this.unlockedInducerModes = new Set(['field']);
+    if (Array.isArray(d.unlockedInducerModes) && d.unlockedInducerModes.length) {
+      for (const id of d.unlockedInducerModes) {
+        if (INDUCER_MODES[id]) this.unlockedInducerModes.add(id);
+      }
+    } else {
+      // Legacy save: infer from era.
+      for (const id of Object.keys(INDUCER_MODES)) {
+        if (this.eraIndex >= INDUCER_MODES[id].eraGate) this.unlockedInducerModes.add(id);
+      }
+    }
+    const requestedMode = typeof d.inducerMode === 'string' ? d.inducerMode : 'field';
+    this.inducerMode = this.unlockedInducerModes.has(requestedMode) ? requestedMode : 'field';
 
     // Migration: saves written before the visibleLensActive field existed
     // had `lensVisuallyActive` doing double duty post-First-Light. If we're

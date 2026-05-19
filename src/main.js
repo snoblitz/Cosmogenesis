@@ -100,8 +100,28 @@ ui.onMacroTrackToggle = (id, nextTracked) => {
   sim.setMacroTracked(id, nextTracked);
   if (state.requestSave) state.requestSave();
 };
-sim.onEmitterEmit = (_emitter) => {
-  state.potential += 1;
+// v0.5 economy: emitters no longer print +1 Potential per emission. They
+// pay back indirectly through the macro-birth / cradle-cross / star-ignite
+// milestone events fired below, plus the per-second stellar luminosity
+// income added inside state.update. An emitter is a capital investment
+// that converts Potential into a star, then dissolves into the ignition.
+sim.onMacroBirth  = (m) => state.onMacroBirth(m);
+sim.onCradleCross = (m) => state.onCradleCross(m);
+sim.onStarIgnite  = (m) => state.onStarIgnite(m);
+sim.onEmitterStabilize = (_e) => {
+  // Hook for UI feedback (toast/whisper) when calibration succeeds. No
+  // economic effect — payoff comes when the emitter feeds a star.
+  refreshTools();
+};
+sim.onEmitterDud = (_e) => {
+  // Catastrophic dud: emitter has dissolved. UI refresh so the deployables
+  // list drops the row immediately.
+  refreshTools();
+};
+sim.onEmitterConsumed = (_e, _star) => {
+  // Star ate the emitter. UI refresh and let the renderer's existing
+  // ignition animation carry the visual moment.
+  refreshTools();
 };
 ui.onDeployEmitterClick = () => {
   if (state.eraIndex < EMITTER_ERA_GATE) return;
@@ -1189,7 +1209,7 @@ function frame(now) {
   _prevEraIndex = state.eraIndex;
 
   sim.tick(dt);
-  state.update(sim, renderer);
+  state.update(sim, renderer, dt);
   updateSmartTracking(dt);
   renderer.render(sim, state, ui);
   ui.render(state);
