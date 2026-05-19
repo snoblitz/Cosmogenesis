@@ -172,9 +172,10 @@ ui.onCatalogUntrack = (id) => {
   }
   state.requestSave?.();
 };
-// Click an emitter in the catalog: pin the emitter inspector to it, pan
-// the camera to its position with a slight zoom-in. Clicking the same
-// emitter again unpins.
+// Click an emitter in the catalog: pin the emitter inspector to it.
+// The camera does NOT move -- Jeff wants details without disturbing
+// the current view. If the emitter is offscreen, the leader line just
+// points toward where it is; the popup itself is always readable.
 ui.onCatalogEmitterClick = (emitterId) => {
   const emitter = sim.getEmitterById?.(emitterId);
   if (!emitter) return;
@@ -187,17 +188,6 @@ ui.onCatalogEmitterClick = (emitterId) => {
   inspectorPinId = null;
   inspectorPinSource = null;
   emitterPinId = emitterId;
-  // Focus camera: center on emitter, zoom in modestly (2× era default,
-  // clamped to the same min/max bounds userZoomAt uses).
-  if (state.eraIndex >= FIRST_LIGHT_ERA) {
-    const eraZ = ERAS[state.eraIndex]?.zoom ?? 1.0;
-    const focusZ = Math.min(eraZ * 6.0, Math.max(eraZ * 0.25, eraZ * 2.0));
-    renderer.targetZoom = focusZ;
-  }
-  renderer.cam.x = emitter.x;
-  renderer.cam.y = emitter.y;
-  activateCameraOverride();
-  clampCameraToBounds();
 };
 
 // Visual targets:
@@ -738,6 +728,11 @@ function gestureUpdate() {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
+  // Any tap on the canvas dismisses the emitter inspector pin. The user
+  // wanted explicit details on a deployed emitter; once they interact
+  // with the world again, get out of the way.
+  if (emitterPinId != null) emitterPinId = null;
+
   // Middle-click (any pointer) or space+left-click (mouse) → start pan.
   // Intercepted before the spawn path so it doesn't paint particles.
   const isMouse = e.pointerType === 'mouse';
@@ -1027,6 +1022,13 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && placementMode) {
     placementMode = false;
     refreshTools();
+    return;
+  }
+  // Escape also dismisses an active emitter inspector pin. Falls through
+  // to placementMode check above first since that's the louder modal state.
+  if (e.key === 'Escape' && emitterPinId != null) {
+    emitterPinId = null;
+    e.preventDefault();
     return;
   }
   if (isTypingInInput()) return;
