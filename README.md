@@ -4,7 +4,7 @@
 
 **Cosmogenesis** is a physics-driven incremental cosmic observatory. You add potential to an empty void. Radio instruments detect what you've made before you can see it. Eventually the thermal lens reveals the universe, First Light paints it into the visible spectrum, and matter learns to gather, condense, and connect into a glowing cosmic web. Bodies that emerge have names, can be tracked, and carry life histories you can read. It is meditative, scientific, and unfolds through discovered laws of reality rather than upgrade trees.
 
-**Version:** v0.3 (May 17, 2026)
+**Version:** v0.4 (May 18, 2026)
 
 **Play it:** https://snoblitz.github.io/Cosmogenesis/
 
@@ -24,11 +24,11 @@ The repo is also a fully static site — any plain HTTP file server works. GitHu
 
 ---
 
-## What's here today (v0.3)
+## What's here today (v0.4)
 
 ### From v0.1
 - **5 implemented eras** (of 13 designed): The First Particle, The Field Awakens, Matter Learns to Gather, Structure Emerges, The Cosmic Web
-- **3 observational instruments**: Radio Lens (audio sonification), Thermal Lens (visual sensor view), Visible Lens (now active in Era 5)
+- **3 observational instruments**: Radio Lens (audio sonification), Thermal Lens (visual sensor view), Visible Lens (active from Era 5)
 - **Procedural pentatonic audio**: pitch driven by mass, four instruments (particle bell, structure pad, filament drone, era cue)
 - **Cosmic web** with mass-driven filament temperature + range; Tier 2 macro-on-macro attraction
 - **Three-act opening cinematic**: void → radio reveal → thermal scan reveal
@@ -42,18 +42,28 @@ The repo is also a fully static site — any plain HTTP file server works. GitHu
 - **Expandable life-history**: each tracked body carries a timeline of its significant events (born, absorbed others, crossed cradle threshold). A small tombstone glyph marks the bodies that died.
 - **Cosmic time**: real seconds are now displayed as **years** at a 10× scale. A live Year counter sits above Era in the top-left HUD.
 - **Binding-energy mechanic**: every merge releases a small fraction of mass as radiation. Potential (your taps) and Matter (what the cosmos holds) now diverge meaningfully.
-- **Visible mute button** in the bottom-right with the same speaker-with-strike iconography as the radio lens (the M key was hidden and easily mis-pressed).
+- **Visible mute button** in the bottom-right.
 - **Cosmic favicon**: self-contained SVG igniting cradle on a dark backdrop.
 
-### New in v0.3
+### From v0.3
 - **Era 5 — First Light**: cradles ignite into stars at mass **1500** with an audio cue, white-gold aura, ignition burst (3 rings + flash), and a reverse-spectrum bottom-to-top sweep that paints the visible spectrum in.
 - **Star naming + memory**: `Cradle{N}` becomes `Star{N}` on ignition, and history now records a new `ignited` event.
 - **Manual camera controls**: mouse-wheel zoom, drag pan, pinch zoom, two-finger pan, and keyboard navigation.
 - **Smart Tracking**: optional auto-pan + auto-zoom keeps all macros in view, with a recenter button on the right rail.
-- **Inspector leader line**: catalog-pinned popups throw a thin elbow back to the selected body, with smart placement that avoids HUD panels; viewport taps stay clean.
-- **Macro atmosphere + accretion dust**: each well now shows a depleted-but-not-empty falloff and a dusty amber infall cloud whose hue is forced to contrast with the body.
-- **Clearer cosmic structure**: filament glow and a core two-pass stroke make dense scenes read cleanly.
-- **Touch + PWA polish**: progress-ring long-press feedback, a side-anchored menu, finger-lift / menu-placement fixes, and more reliable iOS PWA reloads.
+- **Inspector leader line**: catalog-pinned popups throw a thin elbow back to the selected body, with smart placement that avoids HUD panels.
+- **Macro atmosphere + accretion dust**, clearer cosmic structure (filaments + two-pass core stroke), touch + PWA polish.
+
+### New in v0.4
+- **Cosmic expansion at First Light**: the world physically grows **7× per dimension** at ignition, **3000 cosmic-dust particles** seed the new outer ring (fully interactive — they get pulled, absorbed, can coalesce), particle/macro caps bump, camera cinematic pulls back to **0.06×** to reveal the new scale. A `cosmos-yours` whisper lands at full pullback: *"Out of many — one — a new center holds the field."*
+- **Era 1–4 camera lock**: manual camera disabled pre-First-Light so the contemplative early eras stay contemplative and the cosmic reveal hits harder.
+- **Zoom-out wall guard**: `fitMinZoom()` floor stops the player from ever pulling back far enough to see the seeded universe's rectangular edge.
+- **Visible Lens — permanent + customizable**: earns at First Light alongside Thermal (mutex), persists forever, has a settings drawer for Exposure / Star Bloom / Diffraction Spikes, drives a dual-color blackbody curve for macro tint.
+- **Deployable Emitters** (Tools panel, era 3+): standalone world entities that emit dense particle packets at 0.5 Hz. Pause / resume / remove from the context menu OR the new catalog row quick actions.
+- **Catalog as command center**: two collapsible subsections — **Tracked** + **Deployed** — each with header + chevron + count badge.
+  - Tracked rows get a gold **star** to quick-untrack.
+  - Deployed rows get an **eye** (visibility toggle, emitter keeps emitting), a **power** button (pause/resume), and a **trash** button (two-click confirm).
+  - Click an emitter row title to pin an amber **Emitter Inspector** popup with leader line. Dismiss with another click, a canvas tap, Escape, delete, or recenter.
+- **Dense color-varied starfield** (220 → 1400 stars) + **zoom indicator pill** + camera tutorial toast (device-aware) at the cosmic reveal moment.
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for the full version-by-version feature list.
 
@@ -63,9 +73,9 @@ See [docs/CHANGELOG.md](docs/CHANGELOG.md) for the full version-by-version featu
 
 1. **[docs/DESIGN.md](docs/DESIGN.md)** — the philosophy. *Why* the game is shaped this way. Read this first.
 2. **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how the code is structured. Module-by-module breakdown.
-3. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — what shipped in v0.1 and v0.2.
-4. **[docs/ROADMAP.md](docs/ROADMAP.md)** — what's next. Era 5+ implementation, music, spectrum filter, body-lineage polish.
-5. **[docs/SESSION_LOG.md](docs/SESSION_LOG.md)** — the origin story. How v0.1 and v0.2 came together in one Sunday.
+3. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — what shipped in v0.1 through v0.4.
+4. **[docs/ROADMAP.md](docs/ROADMAP.md)** — what's next. v0.5 candidates: emitter economy rebalance, particle eviction policy, spectrum filter, body-lineage polish.
+5. **[docs/SESSION_LOG.md](docs/SESSION_LOG.md)** — the origin story. How v0.1, v0.2, and onward came together.
 
 ---
 

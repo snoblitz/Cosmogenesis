@@ -4,6 +4,82 @@ All notable changes to Cosmogenesis. Versioning follows roughly [Semantic Versio
 
 ---
 
+## v0.4.0 — *2026-05-18 (Monday)* — Cosmic expansion + catalog command center
+
+From v0.3 to v0.4, Cosmogenesis grew from "a small luminous pocket" to "a sandbox you genuinely inhabit". First Light now triggers an actual **cosmic expansion event** — the world bounds explode ~50×, thousands of cosmic-dust particles seed the outer void, and the camera pulls way back to reveal it. The Catalog became a real command center with subsections, quick actions, and click-to-inspect for deployed emitters. The Visible Lens picked up customization. And the manual zoom-out now has a soft floor so the player never sees the seeded universe's rectangular edge.
+
+### First Light — cosmic expansion event
+
+- **`sim.expandWorld(factor)`**: at ignition, world bounds grow 7× per dimension (~50× area). All existing bodies (particles, macros, emitters) are translated to the new world center, then `sim.worldScale` is multiplied by `factor` and persisted across saves/resizes.
+- **`sim.seedCosmicMatter(count, oldRect)`**: 3000 cosmic-dust particles are rejection-sampled into the *new* outer ring (avoiding the old played-in area). Mass 1.0–2.2, hue 180–310 (warmer tail than player spawns), drift speed 0.3–1.8. **Fully interactive** — they participate in gravity, get absorbed, can coalesce into new macros, weave into filaments.
+- **Option A economy**: `state.potential` is inflated by the total seeded mass, so the player isn't taxed for matter that just materialized around them.
+- **Caps bumped post-First-Light**: `particleCap` 1500 → 8000, `macroCap` 40 → 100. Headroom for cosmic-scale play.
+- **`firstLightExpansionDone`** flag (persisted) prevents double-fire on reload.
+- **Camera cinematic**: at ignition the camera recenters on the new world center, override clears, smart tracking is suppressed for ~10s while the zoom lerps out to era-5 default (**0.06×**) over ~15s.
+- **`cosmos-yours` whisper**: when zoom settles at full pullback, the universe whispers *"Out of many — one — a new center holds the field"* (bypasses cooldown like First Light).
+- **Camera tutorial toast**: one-time, device-aware (wheel/keys vs. pinch/drag) hint about the manual camera, anchored to the moment the cosmos-yours whisper fires.
+
+### Era 1–4 camera lock + reveal polish
+
+- Manual camera is **locked** pre-First-Light. `userZoomAt` + `userPanBy` early-return; smart tracking is forced on regardless of user setting. The contemplative early eras stay contemplative; the cosmic reveal at First Light hits harder.
+- **Dense color-varied starfield** (220 → 1400 stars, 5 palette buckets, size variance) makes the void around the playable zone read as continuous cosmos even pre-First-Light.
+- **MIN_ZOOM** 0.40 → 0.20 (world extents widened correspondingly).
+- **Zoom indicator pill** next to the Recenter button shows live zoom (e.g. `0.06×`) so player and dev can talk about the same numbers.
+
+### Zoom-out wall guard
+
+- New runtime `fitMinZoom()` floor in `main.js`: the smallest zoom at which the viewport still fits inside `sim.bounds` × a 6% margin. Applied in both `userZoomAt` (wheel/keyboard/pinch) and `updateSmartTracking` (auto-framing). Player can no longer pull back far enough to see the seeded universe's rectangular edge. Default post-First-Light floor: **~0.030×**.
+
+### Visible Lens
+
+- **Earned at First Light** as a permanent instrument (mutex with Thermal: enabling one auto-disables the other; both stay in the instrument panel forever).
+- **`state.visibleLensActive`** is a separate persisted flag — independent of `lensVisuallyActive` (thermal). Fixes the bug where toggling Visible would retire Thermal from the panel.
+- **Dual color system**: `visibleHueFor(mass)` blackbody curve drives macro tint when Visible Lens is active (cool blue cradles, warm sun-yellow stars, orange super-massives).
+- **Settings drawer** (cog button on the instrument): Exposure (0–1), Star Bloom (0–2), Diffraction Spikes (on/off). Persisted across reloads. Defaults: Exposure 0.3, Bloom 0.4, Spikes ON.
+
+### Deployable Emitters
+
+- New **Tools** panel (era 3+) with a **Deploy Emitter** button (cost: 50 Potential, scales).
+- Emitters are world entities: they spray dense `mass: 60` particle packets outward at 0.5 Hz; gravity decides what they ultimately feed.
+- Pause / resume / remove from context menu (right-click / long-press).
+- Pre-Visible-Lens the emitter glyph reads through the radio/thermal aesthetic; post-First-Light it picks up an amber glow that matches the visible spectrum palette.
+
+### Catalog — command center restructure
+
+- **Two collapsible subsections**: **Tracked** (macros the player pinned) + **Deployed** (emitters the player placed). Each has a header with chevron + label + count badge. Click header to collapse; count badge stays visible. Panel hides entirely when both sections are empty.
+- **Per-emitter quick actions** on each Deployed row:
+  - **Eye** — toggle render visibility (emitter still emits + earns; just hidden from the canvas)
+  - **Power** — pause / resume emission (icon flips on `.is-paused` parent class)
+  - **Trash** — two-click confirm (first click swaps to a red "Confirm?" label; second click within 3 s actually removes; auto-reverts after 3 s or on blur)
+- **Quick untrack on Tracked rows**: filled gold star button removes the macro from the catalog (macro itself stays in the sim, can be re-tracked via context menu).
+- **Click-to-inspect for emitters**: clicking the title area of a Deployed row pins a dedicated **Emitter Inspector** popup with an amber leader-line back to the emitter glyph. Status (Active / Paused / Hidden), Rate (`0.5 / sec`), live Emitted count (new `emitter.emitted` field, serialized). Catalog row gets an amber pinned accent.
+- **Dismiss paths for the emitter inspector**: click same row again, tap the canvas, press Escape, delete the emitter, or hit Recenter — all clear the pin. Camera does **not** move when an emitter is pinned (intentionally — Jeff wants details without disturbing the view).
+
+### Refactor
+
+- Extracted **`_positionFloatingInspector` + `_drawFloatingLeader`** in `ui.js` so the macro inspector and emitter inspector share one positioning + leader-line algorithm.
+- Runtime instance fields on `sim`: `particleCap`, `macroCap`, `worldScale` (previously module-level consts). Allows post-First-Light cap bumps + world expansion to survive reloads.
+- New persisted state: `firstLightExpansionDone`, `cameraTutorialShown`, `visibleLensActive`, `smartTrackingSuppressUntil`, per-emitter `hidden` + `emitted`, `worldScale`.
+
+### Whispers
+
+- **Cut**: `perspective-grows` (redundant with the era 3 banner) + `first-macro` (redundant with the cohesion law).
+- **Rewritten**: `first-filament` → *"Distant macros bend toward each other. The cosmic web takes shape."*
+- **Added**: `cosmos-yours` at era ≥ 5 + zoom ≤ 0.07 (special-cased to bypass cooldown).
+- **First Light** whisper also bypasses cooldown so it lands at the moment, not in the queue.
+
+### Playwright harness (local-only)
+
+Local-only scripts at repo root, gitignored: `playtest_session.py`, `playtest_emitters.py`, `playtest_firstlight.py`, `playtest_verify.py`, `playtest_vlens.py`, `playtest_zoom.py`, `playtest_starfield.py`, `playtest_expansion.py`, `playtest_notes_batch.py`, `playtest_catalog_restructure.py`, `playtest_emitter_focus.py`, `playtest_zoom_wall.py`. Output in `playtest/`.
+
+### Known follow-ups
+
+- **Particle cap eviction subtlety**: `spawnParticleWithVelocity` evicts the oldest low-mass particle when at cap, which means cosmic-seeded dust gets evicted first as the player keeps spawning. Could be a feature (universe consolidates as you act) or a slow erosion of the sandbox. Flagged for design decision.
+- **Refactor opportunity**: extract `_createParticle` helper to unify the two parallel particle-creation paths (player spawn vs cosmic seed). Not a bug, future-proofing for more seeding flavors.
+- **Emitter economy "currently broken"** per Jeff — deferred design pass.
+
+---
+
 ## v0.3.0 — *2026-05-17 (continued — same Sunday, evening)* — First Light + Camera + Touch
 
 From v0.2 to v0.3, Cosmogenesis crossed a line: bodies stopped merely *becoming trackable* and started becoming luminous destinations. The evening pass turned Cradles into Stars, gave the player a real manual camera, and made touch interaction feel deliberate instead of provisional.

@@ -35,20 +35,43 @@ The "First Light + camera + touch" arc. Where v0.2 made bodies feel knowable, v0
 
 ---
 
-## v0.4 candidates (next session)
+## ✅ v0.4 — Shipped 2026-05-18
+
+The "cosmic expansion + catalog command center" arc. First Light became an actual world-scale event, the Catalog grew real management surfaces, the Visible Lens got customization, and the manual zoom got an immersion guard. See [CHANGELOG.md](CHANGELOG.md) for the full feature list.
+
+- **Cosmic expansion at First Light**: world bounds × 7 per dim, 3000 outer-ring cosmic-dust particles seeded, caps bumped (particles 1500→8000, macros 40→100), camera cinematic to era-5 default 0.06×
+- **`cosmos-yours` whisper** at full pullback + one-time camera tutorial toast (device-aware)
+- **Era 1–4 camera lock**: manual zoom/pan disabled, smart tracking forced on — saves the cosmic reveal for First Light
+- **Dense starfield** (220→1400 stars, color buckets, size variance) + **MIN_ZOOM** widened 0.40→0.20
+- **Zoom indicator pill** next to Recenter
+- **Zoom-out wall guard** (`fitMinZoom()`): player can no longer pull back past the seeded universe's edge
+- **Visible Lens**: permanent instrument (mutex with Thermal), dual-color `visibleHueFor(mass)` blackbody curve, settings drawer (Exposure / Star Bloom / Diffraction Spikes)
+- **Deployable Emitters** (Tools panel, era 3+): standalone world entities, dense packet emission, pause/resume/remove
+- **Catalog command center**: Tracked + Deployed collapsible subsections with count badges; per-emitter eye/power/trash quick actions; gold star to untrack macros; click an emitter row for an amber **Emitter Inspector** popup with leader line; dismiss on tap/Escape/delete
+- **Whispers**: cut `perspective-grows` + `first-macro`, rewrote `first-filament`, added `cosmos-yours`, First Light bypasses cooldown
+- **Refactor**: `_positionFloatingInspector` + `_drawFloatingLeader` shared by both inspectors; runtime instance fields for `particleCap` / `macroCap` / `worldScale`
+
+---
+
+## v0.5 candidates (next session)
 
 The natural next moves, in rough order of leverage:
 
-### 1. Body lineage polish
+### 1. Emitter economy rebalance
 
-Now that bodies have identity, the catalog could go deeper:
+Per Jeff: "currently very broken". Needs a real design pass.
+- Cost curve vs. throughput vs. macro feeding rate — the loop should be self-sustaining without being trivially exploitable.
+- Differentiated emitter modes? (e.g. cold drift emitter vs. dense feeder vs. directional jet)
+- Visual + audio polish on the emission pulse so each tick reads as a real event.
 
-- **Tombstone entries for absorbed tracked bodies**: when a tracked body gets absorbed, don't just vanish from the catalog. Leave a faded "extinct" entry showing its full history up to the moment of absorption, with a clear `Absorbed by {Name}` final event.
-- **Lineage view**: clicking a body's "Absorbed {Target}" event in its history could navigate (or hover-preview) the absorbed body's history.
-- **Catalog filters / sort**: filter by kind, sort by age / mass / tracked-time. Useful once players have 20+ tracked bodies.
-- **Catalog export**: a tiny "copy as JSON" or "copy as text summary" for sharing your cosmic family tree.
+### 2. Particle cap eviction policy
 
-### 2. Spectrum filter (Phase B)
+`spawnParticleWithVelocity` currently evicts the oldest low-mass particle when at cap. Post-First-Light this preferentially evicts cosmic-seeded dust, slowly eroding the sandbox. Either:
+- **Keep as-is** and call it canon (universe consolidates as you act), OR
+- Tag cosmic-seeded particles with a `cosmic: true` flag and prefer evicting player-spawned particles first, OR
+- Mass-weighted eviction (lighter particles always go first regardless of age).
+
+### 3. Spectrum filter (Phase B)
 
 When Visible Lens is unlocked, give the player a **lens spectrum selector**: Radio / Infrared / Visible / UV / X-ray. Each shows the same simulation through a different visual treatment.
 
@@ -60,25 +83,25 @@ When Visible Lens is unlocked, give the player a **lens spectrum selector**: Rad
 
 This makes the player *the astronomer*. Choose your wavelength.
 
-### 3. Ambient music layer
+### 4. Body lineage polish (carried from v0.4 backlog)
+
+- **Lineage view**: clicking a body's "Absorbed {Target}" event in its history could navigate (or hover-preview) the absorbed body's history.
+- **Catalog filters / sort**: filter by kind, sort by age / mass / tracked-time. Useful once players have 20+ tracked bodies.
+- **Catalog export**: a tiny "copy as JSON" or "copy as text summary" for sharing your cosmic family tree.
+
+### 5. Ambient music layer
 
 Soft procedural pad underneath the bells, also in A minor pentatonic so it harmonizes with detection sounds. Slow chord progression: i - VI - III - VII (Am - F - C - G) on a 30-second loop, very low volume by default.
 
 Pure synthesis — no audio files. Same Web Audio API. Add to `audio.js` as `playAmbientLayer()` with volume control in global settings.
 
-### 4. Sound on history milestones
+### 6. Sound on history milestones
 
 When a macro crosses the cradle threshold or gets absorbed, play a brief audio marker. Currently history events fire silently in the simulation; pairing them with a subtle sound would let players *hear* their tracked bodies' significant moments without watching the catalog.
 
-### 5. Cradle visual treatment
+### 7. Refactor: `_createParticle` helper
 
-Cradles look mostly identical to large Structures (just bigger due to mass-radius scaling). The catalog gives them a gold accent; the canvas doesn't. Differentiate:
-- Pulsing extra halo ring
-- Slightly different glow profile (more concentric)
-- Subtle warm tint baseline regardless of inherited hue
-- The body's catalog accent color could project onto its canvas presence
-
-Easy 30-line addition. High visual reward.
+Unify the two parallel particle-creation paths (`spawnParticleWithVelocity` + the direct-push in `seedCosmicMatter`) behind one helper. Not a bug — future-proofs new seeding flavors (supernovae remnants, future-era dust events).
 
 ---
 

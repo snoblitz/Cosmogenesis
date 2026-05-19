@@ -2,7 +2,19 @@
 
 Technical breakdown of Cosmogenesis. Module-by-module, with the data-flow diagrams and the non-obvious design choices called out.
 
-Current version: **v0.3**. See [CHANGELOG.md](CHANGELOG.md) for the version-by-version feature list.
+Current version: **v0.4**. See [CHANGELOG.md](CHANGELOG.md) for the version-by-version feature list.
+
+### v0.4 additions at a glance
+
+- **Runtime instance fields on `sim`**: `particleCap`, `macroCap`, `worldScale` (previously module-level consts). Lets First Light bump caps + expand world at runtime, all persisted.
+- **`sim.expandWorld(factor)` + `sim.seedCosmicMatter(count, oldRect)`**: the cosmic-expansion event at First Light.
+- **`sim.setEmitterHiddenById(id, hidden)`** + per-emitter `hidden` / `emitted` fields, both serialized.
+- **`fitMinZoom()` in main.js**: smallest zoom that keeps the seeded universe's rectangular edge off-screen. Floors `userZoomAt` and `updateSmartTracking`.
+- **Camera lock pre-Era-5**: `userZoomAt` / `userPanBy` early-return if `state.eraIndex < FIRST_LIGHT_ERA`; `updateSmartTracking` treats `eraLocked = eraIndex < 5` as "forced on regardless of user setting".
+- **`_positionFloatingInspector` + `_drawFloatingLeader` in ui.js**: shared positioning + leader-line algorithm used by both the macro inspector and the new emitter inspector. Per-inspector `sizeCache: { w, h }` keeps them independent.
+- **`setEmitterInspector(data)` in ui.js**: parallel to `setMacroInspector` for the amber emitter popup with leader line.
+- **Catalog subsections in ui.js**: `_renderTrackedSection` + `_renderDeployedSection`, with `_catalogSectionCollapsed = new Set()` tracking collapse state.
+- **New persisted state fields**: `firstLightExpansionDone`, `cameraTutorialShown`, `visibleLensActive`, `smartTrackingSuppressUntil`, `worldScale`.
 
 ---
 

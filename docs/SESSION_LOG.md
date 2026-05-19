@@ -687,3 +687,55 @@ What shipped in this second half wasn't one feature. It was a whole layer of *be
 Installed PWAs reloaded correctly. Touch stopped feeling approximate. The camera learned both intention and obedience. Gravity wells gained appetite. The inspector learned how to point. And the simulation crossed the threshold where a Cradle could become a star with ceremony instead of just a state change.
 
 Same Sunday, still one session — just now with tight bugfix commits, screenshot feedback loops, a four-agent fleet, and enough stamina to carry the universe into First Light.
+
+
+---
+
+## v0.4 epilogue — Monday, May 18, 2026
+
+> *"yucky bug — when you select a deployable from the menu it brings the popup details up and they arent dismissable and never go away"*
+> *— Jeff, mid-playthrough*
+
+The Monday session was a long playtest-feedback loop. Where v0.3 made the universe inhabitable, v0.4 made it feel like a *place you live in*.
+
+### Morning — Era 5 polish + Visible Lens (commits 7a86a3c → 5e3da00)
+
+The First Light cinematic was *almost* right: the whisper landed too late, the banner stepped on the ignition, the lens HUD showed contradictory state. Fixed in one commit: whisper bypasses cooldown, banner delays 3.2s, ignition flash dialed back, dual color system MVP.
+
+Then Jeff caught the real instrument bug: the Thermal Lens was being *retired* from the panel when Visible Lens unlocked. **Instruments are earned, they stay forever.** Separated `visibleLensActive` from `lensVisuallyActive` (thermal), put them under a mutex, added settings (Exposure / Bloom / Diffraction Spikes), shipped.
+
+### Afternoon — Cosmic expansion (commit a606508)
+
+The big one. Jeff zoomed out post-ignition and saw a small box of activity in a vast empty starfield. *"This isn't a holy fuck moment."* Designed a 50× world expansion event that fires at First Light: seed 3000 cosmic-dust particles into the new outer ring, inflate Potential by the seeded mass (Option A economy), bump caps (1500→5000, 40→100), recenter camera, suppress smart tracking for the cinematic.
+
+Rubber-duck pass before implementing caught 7 blockers. Code-review pass after caught one refactor opportunity. Shipped with `firstLightExpansionDone` flag so it can't double-fire.
+
+Jeff: *"first light zoomed out to just 0.22x at the end - that still isnt quite the reveal of the galactic playspace."* Zoom 0.22 → **0.06**. Cosmic seed 800 → **3000**. New `cosmos-yours` whisper at full pullback: *"Out of many — one — a new center holds the field."* Camera tutorial toast follows, device-aware.
+
+### Evening — Catalog command center (commits 4491d45 → 63726b9)
+
+Jeff wanted the Catalog to do more than list tracked macros. Restructured into two collapsible subsections — **Tracked** and **Deployed** — with chevron + count badge headers. Per-emitter rows got eye / power / trash quick actions; tracked rows got a gold star to quick-untrack. Then click-to-inspect: tap an emitter row and a dedicated amber **Emitter Inspector** pins to it with a leader line back to the glyph.
+
+Built sync, playtested with Playwright after every commit. All four ships came in clean.
+
+### Late evening — the "yucky bug" + the wall (commits a72f5b8 + bd9b2b9)
+
+The emitter inspector was zooming + panning the camera on click. Jeff: *"just pop the details."* Stripped the camera move. Then he found the popup wasn't dismissable. Added three dismiss paths: click same row, tap canvas, press Escape.
+
+While zoomed all the way out, he caught one more thing: the seeded universe rectangle was visible at 0.02× zoom. *"Invisible wall — breaks immersion."* Added a runtime `fitMinZoom()` floor — the smallest zoom at which the viewport still fits inside `sim.bounds` with a 6% margin. Applied to both the user-zoom path and the smart-tracking path. Wall gone.
+
+### Recurring footgun
+
+The `#ui { pointer-events: none }` pattern bit twice this session. Any new interactive subsection needs to opt back in with `pointer-events: auto` or clicks pass through to the canvas. Caught both times during playtest, not from the code-review pass.
+
+### Tony rule that earned its keep
+
+> *Use Playwright after every commit. Don't trust intuition on UX changes.*
+
+Every catalog refactor, every camera tweak, every dismiss path — verified end-to-end before pushing. Caught a real renderer issue (signature mismatch on `render(sim, state, ui)`) that would have been a runtime stutter on production.
+
+### What v0.4 ended as
+
+A universe that grows when it ignites. A command center for what you've built. An emitter you can quickly silence or hide or kill. A camera that respects the immersion. And a tutorial toast that finally explains the camera the first time you'd want to use it.
+
+The cosmos is yours.
