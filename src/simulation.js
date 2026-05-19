@@ -190,7 +190,8 @@ export class Simulation {
       y,
       paused: false,
       hidden: false,
-      accum: 0
+      accum: 0,
+      emitted: 0
     };
     this.emitters.push(emitter);
     return emitter;
@@ -382,6 +383,7 @@ export class Simulation {
           // rate of ~12-25 mass/sec at 0.5Hz emission.
           { mass: EMITTER_PARTICLE_MASS, r: 3.4, hue: 38 + Math.random() * 18 }
         );
+        emitter.emitted = (emitter.emitted || 0) + 1;
         if (typeof this.onEmitterEmit === 'function') {
           this.onEmitterEmit(emitter);
         }
@@ -601,7 +603,8 @@ export class Simulation {
         y: e.y,
         paused: e.paused,
         hidden: !!e.hidden,
-        accum: e.accum
+        accum: e.accum,
+        emitted: typeof e.emitted === 'number' ? e.emitted : 0
       })),
       nextId: this.nextId,
       eraLevel: this.eraLevel,
@@ -684,7 +687,8 @@ export class Simulation {
           y,
           paused: !!e.paused,
           hidden: !!e.hidden,
-          accum: typeof e.accum === 'number' ? e.accum : 0
+          accum: typeof e.accum === 'number' ? e.accum : 0,
+          emitted: typeof e.emitted === 'number' ? e.emitted : 0
         });
       }
     }

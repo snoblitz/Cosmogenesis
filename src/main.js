@@ -125,6 +125,7 @@ ui.onEmitterPauseToggle = (emitterId) => {
 };
 ui.onEmitterRemove = (emitterId) => {
   if (!sim.removeEmitterById(emitterId)) return;
+  if (emitterPinId === emitterId) emitterPinId = null;
   state.requestSave?.();
   refreshTools();
 };
@@ -170,6 +171,33 @@ ui.onCatalogUntrack = (id) => {
     inspectorPinSource = null;
   }
   state.requestSave?.();
+};
+// Click an emitter in the catalog: pin the emitter inspector to it, pan
+// the camera to its position with a slight zoom-in. Clicking the same
+// emitter again unpins.
+ui.onCatalogEmitterClick = (emitterId) => {
+  const emitter = sim.getEmitterById?.(emitterId);
+  if (!emitter) return;
+  // Toggle off if already pinned to this emitter.
+  if (emitterPinId === emitterId) {
+    emitterPinId = null;
+    return;
+  }
+  // Clear macro pin so the two inspectors don't fight for attention.
+  inspectorPinId = null;
+  inspectorPinSource = null;
+  emitterPinId = emitterId;
+  // Focus camera: center on emitter, zoom in modestly (2× era default,
+  // clamped to the same min/max bounds userZoomAt uses).
+  if (state.eraIndex >= FIRST_LIGHT_ERA) {
+    const eraZ = ERAS[state.eraIndex]?.zoom ?? 1.0;
+    const focusZ = Math.min(eraZ * 6.0, Math.max(eraZ * 0.25, eraZ * 2.0));
+    renderer.targetZoom = focusZ;
+  }
+  renderer.cam.x = emitter.x;
+  renderer.cam.y = emitter.y;
+  activateCameraOverride();
+  clampCameraToBounds();
 };
 
 // Visual targets:
@@ -260,6 +288,7 @@ let gestureDist = 0;
 // during the slop window before we commit to "tap" vs "drag".
 let inspectorPinId = null;
 let inspectorPinSource = null; // 'catalog' | 'viewport'
+let emitterPinId = null;       // when set, emitter inspector follows this emitter
 let pendingPinId = null;
 let pendingPinStart = null; // { x, y, pointerId, t }
 const TAP_SLOP_PX = 10;     // CSS pixels of movement allowed before tap → drag
@@ -458,6 +487,40 @@ function resolveInspector() {
   else   ui.setMacroInspector(null);
 }
 
+function resolveEmitterInspector() {
+  if (emitterPinId == null) {
+    ui.setEmitterInspector(null);
+    return;
+  }
+  const emitter = sim.getEmitterById?.(emitterPinId);
+  if (!emitter) {
+    emitterPinId = null;
+    ui.setEmitterInspector(null);
+    return;
+  }
+  // Compute on-screen position of the emitter glyph (CSS px). The
+  // renderer's emitter glyph radius is ~10 world units; convert through
+  // the current zoom + DPR so the inspector's leader anchors at the glyph
+  // edge rather than its center.
+  const screen = renderer.worldToScreenCss(emitter.x, emitter.y);
+  const glyphRadiusCss = (10 * renderer.zoom) / renderer.dpr;
+  // Compute the emitter's index in the deployed list (1-based) so the
+  // inspector label matches what the Catalog row shows ("Emitter 2", etc.).
+  const idx = sim.emitters.indexOf(emitter);
+  ui.setEmitterInspector({
+    id: emitter.id,
+    indexLabel: idx >= 0 ? String(idx + 1) : '',
+    paused: !!emitter.paused,
+    hidden: !!emitter.hidden,
+    rateHz: EMITTER_RATE_HZ,
+    emitted: emitter.emitted || 0,
+    screenX: screen.x,
+    screenY: screen.y,
+    macroRadiusCss: glyphRadiusCss,
+    source: 'catalog',
+  });
+}
+
 function macroMenuOpts(m, clientX, clientY) {
   return {
     targetType: 'macro',
@@ -542,6 +605,9 @@ function activateCameraOverride() {
 function recenterCamera() {
   renderer.cameraOverride = false;
   if (recenterBtn) recenterBtn.hidden = true;
+  // Recenter is the player's "give the camera back to the game" gesture —
+  // also drop any emitter pin so the inspector doesn't fight smart tracking.
+  emitterPinId = null;
   // Era zoom + Smart Tracking resume on the next frame automatically.
 }
 
@@ -1109,7 +1175,8 @@ function frame(now) {
   ui.render(state);
   ui.updateTools?.();
   resolveInspector();
-  ui.renderCatalog(sim, inspectorPinId, MACRO_CRADLE_THRESHOLD);
+  resolveEmitterInspector();
+  ui.renderCatalog(sim, inspectorPinId, MACRO_CRADLE_THRESHOLD, emitterPinId);
 
   // Zoom indicator: shows current camera magnification (e.g. "0.22×")
   // so the player knows exactly what zoom level they are observing at.

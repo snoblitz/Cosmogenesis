@@ -155,6 +155,9 @@
     <svg id="inspector-leader" xmlns="http://www.w3.org/2000/svg" hidden>
       <polyline points="0,0 0,0 0,0" />
     </svg>
+    <svg id="emitter-inspector-leader" xmlns="http://www.w3.org/2000/svg" hidden>
+      <polyline points="0,0 0,0 0,0" />
+    </svg>
 
     <div id="macro-inspector" role="dialog" aria-live="polite" hidden>
       <div class="mi-header">
@@ -168,6 +171,19 @@
       <div class="mi-row"><span class="mi-label">Age</span><span class="mi-value" data-mi="age">0s</span></div>
       <div class="mi-row mi-row-filaments" hidden><span class="mi-label">Filaments</span><span class="mi-value" data-mi="filaments">0</span></div>
       <div class="mi-hint" hidden></div>
+    </div>
+
+    <div id="emitter-inspector" role="dialog" aria-live="polite" data-kind="emitter" hidden>
+      <div class="mi-header">
+        <div class="mi-titles">
+          <span class="mi-name"></span>
+          <span class="mi-kind">Emitter</span>
+        </div>
+      </div>
+      <div class="mi-row"><span class="mi-label">Status</span><span class="mi-value" data-ei="status">Active</span></div>
+      <div class="mi-row"><span class="mi-label">Rate</span><span class="mi-value" data-ei="rate">0.5 / sec</span></div>
+      <div class="mi-row"><span class="mi-label">Emitted</span><span class="mi-value" data-ei="emitted">0</span></div>
+      <div class="mi-hint">Click row again to unpin</div>
     </div>
 
     <div id="macro-context-menu" role="menu" hidden>

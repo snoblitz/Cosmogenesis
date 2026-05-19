@@ -300,6 +300,19 @@ export class UI {
     this.elInspectorHint = this.elInspector?.querySelector('.mi-hint') || null;
     this.elInspectorLeader = document.getElementById('inspector-leader');
     this.elInspectorLeaderLine = this.elInspectorLeader?.querySelector('polyline') || null;
+
+    // Emitter inspector mirrors the macro inspector layout but lives in its
+    // own panel + leader SVG so both can be visible simultaneously without
+    // fighting over DOM state.
+    this.elEmitterInspector = document.getElementById('emitter-inspector');
+    this.elEmitterInspectorName    = this.elEmitterInspector?.querySelector('.mi-name') || null;
+    this.elEmitterInspectorStatus  = this.elEmitterInspector?.querySelector('[data-ei="status"]') || null;
+    this.elEmitterInspectorRate    = this.elEmitterInspector?.querySelector('[data-ei="rate"]') || null;
+    this.elEmitterInspectorEmitted = this.elEmitterInspector?.querySelector('[data-ei="emitted"]') || null;
+    this.elEmitterInspectorLeader  = document.getElementById('emitter-inspector-leader');
+    this.elEmitterInspectorLeaderLine = this.elEmitterInspectorLeader?.querySelector('polyline') || null;
+    this._emitterInspectorVisible = false;
+    this._emitterInspectorSizeCache = { w: 0, h: 0 };
     this.elCatalogPanel  = document.getElementById('hud-catalog');
     this.elCatalogTrackedList   = document.getElementById('catalog-tracked-list');
     this.elCatalogDeployedList  = document.getElementById('catalog-deployed-list');
@@ -344,6 +357,7 @@ export class UI {
     this.getEmitterMenuContext = null; // (emitterId) => { paused }
     this.getToolsContext = null;      // () => tools readout state
     this.onCatalogEntryClick = null;  // (macroId) => void
+    this.onCatalogEmitterClick = null; // (emitterId) => void  -- triggers focus camera + show inspector
     this._wireToolsPanel();
     this._wireContextMenu();
     this._renderedLawCount = 0;
@@ -1007,28 +1021,109 @@ export class UI {
     }
   }
 
-  _positionInspector(data, wasHidden = false) {
-    const el = this.elInspector;
+  // Show/hide/update the emitter inspector. Mirrors setMacroInspector.
+  // `data` shape: { id, screenX, screenY, paused, hidden, emitted, source,
+  //                 macroRadiusCss? } -- macroRadiusCss is the glyph radius
+  // in CSS px (used as the "target radius" for positioning + leader line).
+  setEmitterInspector(data) {
+    const el = this.elEmitterInspector;
     if (!el) return;
-    if (wasHidden || this._inspectorWidth === 0) {
-      const rect = el.getBoundingClientRect();
-      this._inspectorWidth  = rect.width;
-      this._inspectorHeight = rect.height;
+
+    if (!data) {
+      if (this._emitterInspectorVisible) {
+        el.removeAttribute('data-visible');
+        el.hidden = true;
+        this._emitterInspectorVisible = false;
+      }
+      if (this.elEmitterInspectorLeader) {
+        this.elEmitterInspectorLeader.removeAttribute('data-visible');
+        this.elEmitterInspectorLeader.hidden = true;
+      }
+      return;
     }
 
-    const w = this._inspectorWidth;
-    const h = this._inspectorHeight;
+    const wasHidden = el.hidden;
+    if (wasHidden) el.hidden = false;
+
+    const labelText = data.name || `Emitter ${data.indexLabel || ''}`.trim();
+    if (this.elEmitterInspectorName && this.elEmitterInspectorName.textContent !== labelText) {
+      this.elEmitterInspectorName.textContent = labelText;
+    }
+
+    let statusText;
+    if (data.hidden && data.paused) statusText = 'Paused · Hidden';
+    else if (data.paused) statusText = 'Paused';
+    else if (data.hidden) statusText = 'Active · Hidden';
+    else statusText = 'Active';
+    if (this.elEmitterInspectorStatus && this.elEmitterInspectorStatus.textContent !== statusText) {
+      this.elEmitterInspectorStatus.textContent = statusText;
+    }
+
+    const rateText = `${(data.rateHz ?? 0.5).toFixed(1)} / sec`;
+    if (this.elEmitterInspectorRate && this.elEmitterInspectorRate.textContent !== rateText) {
+      this.elEmitterInspectorRate.textContent = rateText;
+    }
+
+    const emittedText = fmt(Math.max(0, Math.round(data.emitted || 0)));
+    if (this.elEmitterInspectorEmitted && this.elEmitterInspectorEmitted.textContent !== emittedText) {
+      this.elEmitterInspectorEmitted.textContent = emittedText;
+    }
+
+    el.dataset.emitterId = data.id != null ? String(data.id) : '';
+
+    this._positionFloatingInspector(
+      this.elEmitterInspector,
+      this.elEmitterInspectorLeader,
+      this.elEmitterInspectorLeaderLine,
+      this._emitterInspectorSizeCache,
+      data,
+      wasHidden
+    );
+
+    if (!this._emitterInspectorVisible) {
+      requestAnimationFrame(() => {
+        if (!el.hidden) el.setAttribute('data-visible', '1');
+      });
+      this._emitterInspectorVisible = true;
+    }
+  }
+
+  _positionInspector(data, wasHidden = false) {
+    if (!this._macroInspectorSizeCache) this._macroInspectorSizeCache = { w: 0, h: 0 };
+    this._positionFloatingInspector(
+      this.elInspector,
+      this.elInspectorLeader,
+      this.elInspectorLeaderLine,
+      this._macroInspectorSizeCache,
+      data,
+      wasHidden
+    );
+  }
+
+  // Generic float-positioning + leader-line drawing used by both the macro
+  // inspector and the emitter inspector. Picks an anchor around the target's
+  // screen position that minimizes overlap with HUD chrome, clamps inside the
+  // viewport, and draws a leader polyline from the target to a corner of the
+  // panel (only when data.source === 'catalog').
+  _positionFloatingInspector(el, leader, leaderLine, sizeCache, data, wasHidden = false) {
+    if (!el) return;
+    if (wasHidden || sizeCache.w === 0) {
+      const rect = el.getBoundingClientRect();
+      sizeCache.w = rect.width;
+      sizeCache.h = rect.height;
+    }
+
+    const w = sizeCache.w;
+    const h = sizeCache.h;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const pad = 12;
-    const macroR = data.macroRadiusCss || 12;
-    // Real breathing room — never butt up against the body.
-    const gap = Math.max(32, macroR + 28);
+    const targetR = data.macroRadiusCss || 12;
+    const gap = Math.max(32, targetR + 28);
     const diagGap = gap * 0.72;
     const mx = data.screenX;
     const my = data.screenY;
 
-    // Candidate anchors around the macro. Order is preference on ties.
     const candidates = [
       { x: mx + gap,                y: my - h / 2,             dir: 'right',  bias: 3 },
       { x: mx - gap - w,            y: my - h / 2,             dir: 'left',   bias: 2 },
@@ -1057,10 +1152,8 @@ export class UI {
       };
 
       let score = 100 + c.bias;
-      // Penalty for needing to clamp away from the natural anchor.
       score -= (shiftX + shiftY) * 0.25;
 
-      // Penalty for overlapping any visible UI rect (HUD panels, chrome buttons).
       let overlap = 0;
       for (const ar of avoid) {
         const ox = Math.max(0, Math.min(rect.right, ar.right) - Math.max(rect.left, ar.left));
@@ -1069,12 +1162,11 @@ export class UI {
       }
       score -= (overlap / area) * 600;
 
-      // Penalty for sitting on top of the macro (closest panel-edge point to body).
       const px = Math.max(rect.left, Math.min(rect.right, mx));
       const py = Math.max(rect.top,  Math.min(rect.bottom, my));
-      const distToMacro = Math.hypot(px - mx, py - my);
-      const minDist = macroR + 16;
-      if (distToMacro < minDist) score -= (minDist - distToMacro) * 4;
+      const distToTarget = Math.hypot(px - mx, py - my);
+      const minDist = targetR + 16;
+      if (distToTarget < minDist) score -= (minDist - distToTarget) * 4;
 
       if (!best || score > best.score) {
         best = { x: clampedX, y: clampedY, score, dir: c.dir };
@@ -1085,7 +1177,63 @@ export class UI {
     const finalY = best ? best.y : Math.max(pad, Math.min(vh - pad - h, my - h / 2));
 
     el.style.transform = `translate3d(${Math.round(finalX)}px, ${Math.round(finalY)}px, 0)`;
-    this._positionInspectorLeader(data, finalX, finalY);
+    this._drawFloatingLeader(leader, leaderLine, sizeCache, data, finalX, finalY);
+  }
+
+  _drawFloatingLeader(leader, line, sizeCache, data, panelX, panelY) {
+    if (!leader || !line) return;
+    const w = sizeCache.w;
+    const h = sizeCache.h;
+    if (data.source !== 'catalog' || w <= 0 || h <= 0) {
+      leader.removeAttribute('data-visible');
+      leader.hidden = true;
+      return;
+    }
+
+    const left = panelX, right = panelX + w;
+    const top = panelY, bottom = panelY + h;
+    const mx = data.screenX, my = data.screenY;
+    const targetR = data.macroRadiusCss || 12;
+
+    const enterRight = mx < (left + right) / 2;
+    const anchorX = enterRight ? left : right;
+    const cornerOffset = 24;
+    let anchorY;
+    if (my <= top + cornerOffset + 2) {
+      anchorY = bottom - cornerOffset;
+    } else {
+      anchorY = top + cornerOffset;
+    }
+
+    const horizGap = Math.abs(anchorX - mx);
+    const horizLen = Math.max(18, Math.min(56, horizGap * 0.45));
+    const sign = enterRight ? -1 : 1;
+    const elbowX = anchorX + sign * horizLen;
+    const elbowY = anchorY;
+
+    const dxe = elbowX - mx;
+    const dye = elbowY - my;
+    const distToElbow = Math.hypot(dxe, dye);
+    if (distToElbow < targetR + 8) {
+      leader.removeAttribute('data-visible');
+      leader.hidden = true;
+      return;
+    }
+    const sx = mx;
+    const sy = my;
+
+    const fmt = (n) => n.toFixed(1);
+    line.setAttribute(
+      'points',
+      `${fmt(sx)},${fmt(sy)} ${fmt(elbowX)},${fmt(elbowY)} ${fmt(anchorX)},${fmt(anchorY)}`
+    );
+
+    leader.hidden = false;
+    if (leader.getAttribute('data-visible') !== '1') {
+      requestAnimationFrame(() => {
+        if (!leader.hidden) leader.setAttribute('data-visible', '1');
+      });
+    }
   }
 
   // Returns viewport-space rects for any on-screen UI we should not occlude.
@@ -1117,80 +1265,6 @@ export class UI {
       out.push(r);
     }
     return out;
-  }
-
-  _positionInspectorLeader(data, panelX, panelY) {
-    const leader = this.elInspectorLeader;
-    const line = this.elInspectorLeaderLine;
-    if (!leader || !line) return;
-
-    // Only draw a leader line when the inspector was opened from the catalog.
-    // Hover and tap selection from the viewport don't need it — the cursor /
-    // finger already makes the link obvious.
-    const w = this._inspectorWidth;
-    const h = this._inspectorHeight;
-    if (data.source !== 'catalog' || w <= 0 || h <= 0) {
-      leader.removeAttribute('data-visible');
-      leader.hidden = true;
-      return;
-    }
-
-    const left = panelX, right = panelX + w;
-    const top = panelY, bottom = panelY + h;
-    const mx = data.screenX, my = data.screenY;
-    const macroR = data.macroRadiusCss || 12;
-
-    // Enter the panel horizontally on whichever side is closer to the macro.
-    // Pick a top- or bottom-corner entry (not the mid-edge) so the angled
-    // segment is always visibly slanted — entering at the vertical midpoint
-    // would produce a flat horizontal line whenever the panel sits beside the
-    // macro at the same height.
-    const enterRight = mx < (left + right) / 2;
-    const anchorX = enterRight ? left : right;
-    const cornerOffset = 24;
-    let anchorY;
-    if (my <= top + cornerOffset + 2) {
-      // Macro is at or above the panel — enter near the bottom corner so the
-      // angled run still slopes down from the body.
-      anchorY = bottom - cornerOffset;
-    } else {
-      // Default: enter near the top corner; line angles up from the macro.
-      anchorY = top + cornerOffset;
-    }
-
-    // Horizontal segment: a short run into the panel. Length scales with the
-    // horizontal gap so close panels don't get a huge stub.
-    const horizGap = Math.abs(anchorX - mx);
-    const horizLen = Math.max(18, Math.min(56, horizGap * 0.45));
-    const sign = enterRight ? -1 : 1; // direction from anchor back toward macro
-    const elbowX = anchorX + sign * horizLen;
-    const elbowY = anchorY;
-
-    // Start point: the macro's center — the line reads as emanating from the
-    // body itself rather than tangent to its outer glow.
-    const dxe = elbowX - mx;
-    const dye = elbowY - my;
-    const distToElbow = Math.hypot(dxe, dye);
-    if (distToElbow < macroR + 8) {
-      leader.removeAttribute('data-visible');
-      leader.hidden = true;
-      return;
-    }
-    const sx = mx;
-    const sy = my;
-
-    const fmt = (n) => n.toFixed(1);
-    line.setAttribute(
-      'points',
-      `${fmt(sx)},${fmt(sy)} ${fmt(elbowX)},${fmt(elbowY)} ${fmt(anchorX)},${fmt(anchorY)}`
-    );
-
-    leader.hidden = false;
-    if (leader.getAttribute('data-visible') !== '1') {
-      requestAnimationFrame(() => {
-        if (!leader.hidden) leader.setAttribute('data-visible', '1');
-      });
-    }
   }
 
   // ---- Context menu (right-click / long-press) ----
@@ -1532,7 +1606,7 @@ export class UI {
   // the player has placed). The panel is hidden entirely until at least one
   // section has content. Re-uses DOM nodes between frames so it's cheap to
   // call every frame.
-  renderCatalog(sim, pinnedId, cradleThreshold) {
+  renderCatalog(sim, pinnedId, cradleThreshold, pinnedEmitterId = null) {
     if (!this.elCatalogPanel || !sim) return;
 
     const tracked = [];
@@ -1552,7 +1626,7 @@ export class UI {
     }
 
     this._renderTrackedSection(tracked, pinnedId, cradleThreshold);
-    this._renderDeployedSection(emitters);
+    this._renderDeployedSection(emitters, pinnedEmitterId);
   }
 
   _wireCatalogSectionHeaders() {
@@ -1673,7 +1747,7 @@ export class UI {
     }
   }
 
-  _renderDeployedSection(emitters) {
+  _renderDeployedSection(emitters, pinnedEmitterId = null) {
     if (!this.elCatalogDeployedList) return;
     if (emitters.length === 0) {
       this._clearDeployedSection();
@@ -1697,8 +1771,10 @@ export class UI {
 
       const hidden = !!emitter.hidden;
       const paused = !!emitter.paused;
+      const isPinned = (pinnedEmitterId != null && pinnedEmitterId === emitter.id);
       li.classList.toggle('is-hidden', hidden);
       li.classList.toggle('is-paused', paused);
+      li.classList.toggle('is-pinned', isPinned);
 
       const titleText = `Emitter ${idx}`;
       if (titleEl.textContent !== titleText) titleEl.textContent = titleText;
@@ -1759,6 +1835,16 @@ export class UI {
     subEl.className = 'cat-sub';
     titles.appendChild(titleEl);
     titles.appendChild(subEl);
+
+    // Click on titles (anywhere not an action button) focuses the camera
+    // on the emitter and shows its inspector popup.
+    titles.style.cursor = 'pointer';
+    titles.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof this.onCatalogEmitterClick === 'function') {
+        this.onCatalogEmitterClick(emitterId);
+      }
+    });
 
     const actions = document.createElement('div');
     actions.className = 'cat-emitter-actions';
