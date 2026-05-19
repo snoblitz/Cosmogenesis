@@ -284,7 +284,11 @@ export class Simulation {
       r,
       hue,
       age: 0,
-      alive: true
+      alive: true,
+      // v0.5: feeder particles never auto-promote to macros. Used by the
+      // Accretion Stream inducer mode to deliver mass into a specific
+      // macro without spawning competing structures.
+      feeder: !!opts?.feeder
     };
     this.particles.push(particle);
     this.totalSpawned++;

@@ -1,6 +1,17 @@
 // UI layer
 // Pushes game state into the existing DOM HUD. Knows nothing about physics.
 
+// v0.5: Inducer mode glyphs shown in the Upgrades subsection. One unicode
+// char per mode that hints at its behavior (point spray / drag spray /
+// focused charge / directed beam). Kept inline rather than in state.js
+// because they're purely presentational.
+const INDUCER_GLYPHS = {
+  field:       '\u00B7',  // mid-dot — single particle
+  resonance:   '\u2237',  // four-dot proportion — drag-paint trail
+  compression: '\u25C9',  // fisheye — focused charge
+  accretion:   '\u279C'   // heavy-right-arrow — directed beam
+};
+
 const INFO_TOOLTIPS = {
   potential: {
     title: 'Potential',
@@ -279,6 +290,14 @@ export class UI {
     this.elInstruments = document.getElementById('instruments-list');
     this.elInstrumentsPanel = document.getElementById('hud-instruments');
     this.elInstrumentsTools = document.querySelector('.instruments-tools');
+    // v0.5 Instruments subsection refs. Three .catalog-section wrappers:
+    // sensors (lenses), upgrades (Inducer modes), tools (deploy buttons).
+    this.elInstrumentsSensorsSection  = this.elInstrumentsPanel?.querySelector('.catalog-section[data-section="sensors"]')  || null;
+    this.elInstrumentsUpgradesSection = this.elInstrumentsPanel?.querySelector('.catalog-section[data-section="upgrades"]') || null;
+    this.elInstrumentsToolsSection    = this.elInstrumentsPanel?.querySelector('.catalog-section[data-section="tools"]')    || null;
+    this.elInducerModesList = document.getElementById('inducer-modes-list');
+    this._inducerModeNodes = new Map();   // modeId -> { li, glyphEl, labelEl, metaEl }
+    this._instrumentsSectionCollapsed = new Set();  // 'sensors'|'upgrades'|'tools'
     this.elEmitterDeployBtn = document.getElementById('emitter-deploy-btn');
     this.elEmitterDeployCost = document.getElementById('emitter-deploy-cost');
     this.elEmitterReadout = document.getElementById('emitter-readout');
@@ -1574,6 +1593,7 @@ export class UI {
   }
 
   updateTools() {
+    this._setupInstrumentsSections();
     const ctx = (typeof this.getToolsContext === 'function') ? this.getToolsContext() : null;
     const eraIndex = ctx?.eraIndex ?? 0;
     const eraGate = ctx?.eraGate ?? 3;
@@ -1587,6 +1607,10 @@ export class UI {
     const toolsUnlocked = eraIndex >= eraGate;
 
     if (this.elInstrumentsTools) this.elInstrumentsTools.hidden = !toolsUnlocked;
+    // v0.5: hide the entire Tools subsection until the era gate is reached.
+    // Sensors stays visible from the start; Upgrades shows itself as soon as
+    // any mode has reached its era gate (handled in renderInducerModes).
+    if (this.elInstrumentsToolsSection) this.elInstrumentsToolsSection.hidden = !toolsUnlocked;
     if (this.elEmitterDeployBtn) {
       this.elEmitterDeployBtn.disabled = !canAfford;
       this.elEmitterDeployBtn.setAttribute('aria-pressed', placementActive ? 'true' : 'false');
@@ -1597,8 +1621,151 @@ export class UI {
     if (this.elEmitterReadout) {
       this.elEmitterReadout.textContent = deployedCount <= 0
         ? 'Emitters: 0 placed'
-        : `Emitters: ${activeCount} active${pausedCount > 0 ? ` · ${pausedCount} paused` : ''} · +${throughputPerSec.toFixed(1)} Potential/sec`;
+        : `Emitters: ${activeCount} active${pausedCount > 0 ? ` \u00b7 ${pausedCount} paused` : ''} \u00b7 ${throughputPerSec.toFixed(1)} particles/sec`;
     }
+  }
+
+  // v0.5: wire collapse toggles on the new instruments subsections (sensors,
+  // upgrades, tools). Idempotent — runs once via the _wired flag, same
+  // pattern as the catalog section toggles.
+  _setupInstrumentsSections() {
+    for (const section of [
+      this.elInstrumentsSensorsSection,
+      this.elInstrumentsUpgradesSection,
+      this.elInstrumentsToolsSection
+    ]) {
+      if (!section) continue;
+      const header = section.querySelector('.catalog-section-header');
+      if (!header || header._instrumentsWired) continue;
+      header._instrumentsWired = true;
+      header.addEventListener('click', () => {
+        const key = section.dataset.section;
+        if (this._instrumentsSectionCollapsed.has(key)) {
+          this._instrumentsSectionCollapsed.delete(key);
+        } else {
+          this._instrumentsSectionCollapsed.add(key);
+        }
+        section.classList.toggle('collapsed', this._instrumentsSectionCollapsed.has(key));
+      });
+    }
+    // Apply persisted collapsed state on first render. (Not persisted to
+    // save yet — UI-only transient state.)
+    for (const section of [
+      this.elInstrumentsSensorsSection,
+      this.elInstrumentsUpgradesSection,
+      this.elInstrumentsToolsSection
+    ]) {
+      if (!section) continue;
+      const key = section.dataset.section;
+      section.classList.toggle('collapsed', this._instrumentsSectionCollapsed.has(key));
+    }
+  }
+
+  // v0.5: render the Inducer mode selector inside the Upgrades subsection.
+  // ctx is provided by main.js and contains modes (from INDUCER_MODES),
+  // active mode id, unlocked set, era index, potential balance. Three
+  // visual states per row:
+  //   - locked    : pre-era ("Era N required")
+  //   - available : era reached but not purchased (shows cost, click to buy)
+  //   - unlocked  : selectable (click to set active); .is-active when current
+  renderInducerModes(ctx) {
+    if (!this.elInducerModesList || !this.elInstrumentsUpgradesSection) return;
+    const modes = Array.isArray(ctx?.modes) ? ctx.modes : [];
+    if (modes.length === 0) {
+      this.elInstrumentsUpgradesSection.hidden = true;
+      return;
+    }
+    // Show the Upgrades section as soon as ANY mode beyond field is
+    // visible (i.e., its era is reached). Field-only would mean nothing
+    // to upgrade, so we'd hide. Show with at-or-past-era count > 1.
+    const visibleCount = modes.filter(m => ctx.eraReached(m.id) || ctx.unlocked.has(m.id)).length;
+    if (visibleCount <= 1) {
+      this.elInstrumentsUpgradesSection.hidden = true;
+      return;
+    }
+    this.elInstrumentsUpgradesSection.hidden = false;
+
+    // Count = number of unlocked modes (matches Catalog count convention).
+    let unlockedCount = 0;
+    for (const m of modes) if (ctx.unlocked.has(m.id)) unlockedCount++;
+    this._setSectionCount(this.elInstrumentsUpgradesSection, unlockedCount);
+
+    const seen = new Set();
+    let prevNode = null;
+    for (const mode of modes) {
+      const isUnlocked = ctx.unlocked.has(mode.id);
+      const isEraReached = ctx.eraReached(mode.id);
+      // Hide entries whose era hasn't been reached unless they're already
+      // unlocked (defensive — shouldn't normally happen). This keeps the
+      // panel from teasing far-future modes.
+      if (!isEraReached && !isUnlocked) continue;
+      seen.add(mode.id);
+      let entry = this._inducerModeNodes.get(mode.id);
+      if (!entry) {
+        entry = this._buildInducerModeEntry(mode);
+        this._inducerModeNodes.set(mode.id, entry);
+      }
+      const { li, labelEl, metaEl } = entry;
+
+      const isActive = ctx.active === mode.id && isUnlocked;
+      const isAvailable = isEraReached && !isUnlocked && ctx.potential >= mode.unlockCost;
+      const isAffordableLocked = isEraReached && !isUnlocked;
+      li.classList.toggle('is-active', isActive);
+      li.classList.toggle('is-available', isAvailable);
+      li.classList.toggle('is-locked', !isUnlocked && !isAvailable);
+
+      if (labelEl.textContent !== mode.label) labelEl.textContent = mode.label;
+      let metaText;
+      if (isUnlocked) {
+        metaText = isActive ? 'Active' : 'Ready';
+      } else if (isAffordableLocked) {
+        metaText = `${fmt(mode.unlockCost)} P`;
+      } else {
+        metaText = `Era ${mode.eraGate + 1}`;
+      }
+      if (metaEl.textContent !== metaText) metaEl.textContent = metaText;
+      li.setAttribute('title', mode.description || '');
+
+      const nextSibling = prevNode ? prevNode.nextSibling : this.elInducerModesList.firstChild;
+      if (li !== nextSibling) {
+        this.elInducerModesList.insertBefore(li, nextSibling);
+      }
+      prevNode = li;
+    }
+    for (const [id, entry] of this._inducerModeNodes) {
+      if (!seen.has(id)) {
+        entry.li.remove();
+        this._inducerModeNodes.delete(id);
+      }
+    }
+  }
+
+  _buildInducerModeEntry(mode) {
+    const li = document.createElement('li');
+    li.className = 'inducer-mode';
+    li.dataset.modeId = mode.id;
+    const glyphEl = document.createElement('span');
+    glyphEl.className = 'im-glyph';
+    glyphEl.textContent = INDUCER_GLYPHS[mode.id] || '\u25CB';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'im-label';
+    const metaEl = document.createElement('span');
+    metaEl.className = 'im-meta';
+    li.appendChild(glyphEl);
+    li.appendChild(labelEl);
+    li.appendChild(metaEl);
+    li.addEventListener('click', () => {
+      // Behavior depends on row state at the time of click:
+      //   unlocked    -> select as active mode
+      //   available   -> unlock + select
+      //   locked-only -> no-op (UI shows era gate, can't be acted on)
+      if (li.classList.contains('is-available')) {
+        this.onInducerUnlock?.(mode.id);
+      } else if (!li.classList.contains('is-locked')) {
+        this.onInducerSelect?.(mode.id);
+      }
+    });
+    return { li, glyphEl, labelEl, metaEl };
   }
 
   // Build / refresh the Catalog panel. Has two collapsible subsections:
@@ -1626,7 +1793,7 @@ export class UI {
     }
 
     this._renderTrackedSection(tracked, pinnedId, cradleThreshold);
-    this._renderDeployedSection(emitters, pinnedEmitterId);
+    this._renderDeployedSection(emitters, pinnedEmitterId, sim.totalElapsedS || 0);
   }
 
   _wireCatalogSectionHeaders() {
@@ -1747,7 +1914,7 @@ export class UI {
     }
   }
 
-  _renderDeployedSection(emitters, pinnedEmitterId = null) {
+  _renderDeployedSection(emitters, pinnedEmitterId = null, simNow = 0) {
     if (!this.elCatalogDeployedList) return;
     if (emitters.length === 0) {
       this._clearDeployedSection();
@@ -1772,16 +1939,44 @@ export class UI {
       const hidden = !!emitter.hidden;
       const paused = !!emitter.paused;
       const isPinned = (pinnedEmitterId != null && pinnedEmitterId === emitter.id);
+      // v0.5: calibration state — show a live countdown badge on the title
+      // line until the timer reaches zero. The dud roll is captured at
+      // deploy time but the reveal only happens when calibration ends.
+      const calibrating = !emitter.stable && typeof emitter.calibrationUntilS === 'number';
+      const remainingS = calibrating ? Math.max(0, emitter.calibrationUntilS - simNow) : 0;
       li.classList.toggle('is-hidden', hidden);
       li.classList.toggle('is-paused', paused);
       li.classList.toggle('is-pinned', isPinned);
+      li.classList.toggle('is-calibrating', calibrating);
+
+      // Title gets the calibration badge appended as a sibling element so it
+      // doesn't fight the text content updates.
+      let calBadge = entry.calBadge;
+      if (calibrating) {
+        if (!calBadge) {
+          calBadge = document.createElement('span');
+          calBadge.className = 'cat-calibration';
+          titleEl.parentNode.insertBefore(calBadge, titleEl.nextSibling);
+          entry.calBadge = calBadge;
+        }
+        const secs = Math.ceil(remainingS);
+        calBadge.textContent = `Calibrating ${secs}s`;
+        calBadge.dataset.urgent = secs <= 3 ? 'true' : 'false';
+      } else if (calBadge) {
+        calBadge.remove();
+        entry.calBadge = null;
+      }
 
       const titleText = `Emitter ${idx}`;
       if (titleEl.textContent !== titleText) titleEl.textContent = titleText;
 
-      const subText = paused
-        ? 'Paused'
-        : 'Active \u00b7 0.5 particles/sec';
+      // v0.5: rate is now 0.2 Hz (one emission per 5 seconds). During
+      // calibration we report status instead of throughput.
+      const subText = calibrating
+        ? `Calibrating \u00b7 ${Math.ceil(remainingS)}s to stability`
+        : paused
+          ? 'Paused'
+          : 'Active \u00b7 0.2 particles/sec';
       if (subEl.textContent !== subText) subEl.textContent = subText;
 
       if (eyeBtn) {

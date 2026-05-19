@@ -3,7 +3,7 @@
 
 import { Simulation } from './simulation.js';
 import { Renderer }   from './renderer.js';
-import { GameState, emitterDeployCost }  from './state.js';
+import { GameState, emitterDeployCost, INDUCER_MODES }  from './state.js';
 import { UI }         from './ui.js';
 import { Audio }      from './audio.js';
 import { loadGame, saveGame, clearSave, setFreshUntil } from './save.js';
@@ -167,6 +167,31 @@ ui.getToolsContext = () => {
     placementActive: placementMode,
     throughputPerSec: activeCount * EMITTER_RATE_HZ,
   };
+};
+
+// v0.5: Inducer mode UI context. ui.renderInducerModes consumes this each
+// frame to draw the Upgrades section. Decoupled from getToolsContext so the
+// two panels can evolve independently.
+ui.getInducerContext = () => ({
+  modes: Object.values(INDUCER_MODES),
+  active: state.inducerMode,
+  unlocked: state.unlockedInducerModes,
+  potential: state.potential,
+  eraIndex: state.eraIndex,
+  eraReached: (id) => state.inducerModeEraReached(id)
+});
+ui.onInducerSelect = (modeId) => {
+  state.setInducerMode(modeId);
+  ui.renderInducerModes?.(ui.getInducerContext());
+};
+ui.onInducerUnlock = (modeId) => {
+  if (state.unlockInducerMode(modeId)) {
+    // Auto-select on unlock — players almost always want to immediately
+    // try the mode they just bought. They can switch back to Field with
+    // a single click if they don't.
+    state.setInducerMode(modeId);
+  }
+  ui.renderInducerModes?.(ui.getInducerContext());
 };
 ui.getEmitterMenuContext = (emitterId) => {
   const e = sim.getEmitterById(emitterId);
@@ -359,13 +384,106 @@ function screenToClampedWorld(sx, sy) {
   };
 }
 
-function spawnAtScreen(sx, sy) {
-  const w = screenToClampedWorld(sx, sy);
-  sim.spawnParticle(w.x, w.y);
+// v0.5: Inducer mode dispatch. spawnAtScreen is the single entrypoint that
+// every input path (initial pointer-down, drag-promote, hold tick) calls.
+// Behavior depends on the active mode:
+//   field       — single mass-1 packet, +1 Potential (the original trickle)
+//   resonance   — single mass-3 packet, +1 Potential (drag-paint friendly)
+//   compression — does NOT spawn here; release on endHold fires the packet
+//   accretion   — picks the nearest macro within ACCRETION_RANGE_PX and
+//                 spawns a feeder:true mass-2 particle aimed at it. No
+//                 Potential gained (feeders are pure feeding, not income).
+//
+// Compression mode is the odd one out: it builds charge during hold and
+// fires on release. We swallow the immediate spawn here so a tap doesn't
+// fire an empty shot, and we let tickHold accumulate state.compressionCharge
+// instead.
+const ACCRETION_RANGE_PX = 220;        // search radius for a feed target (world units)
+const ACCRETION_FEEDER_SPEED = 7;      // velocity toward the target
+const COMPRESSION_MIN_FRACTION = 0.20; // sub-20%% charges fizzle (no spawn)
+
+function spawnFieldOrResonance(w, mass) {
+  const angle = Math.random() * Math.PI * 2;
+  const speed = Math.random() * 6 + 1.5;
+  sim.spawnParticleWithVelocity(
+    w.x, w.y,
+    Math.cos(angle) * speed,
+    Math.sin(angle) * speed,
+    { mass }
+  );
   state.potential += 1;
   state.markInteraction(Date.now());
   renderer.addRipple(w.x, w.y);
-  // Audio comes from the radio lens detecting matter, not from creation.
+}
+
+function pickAccretionTarget(w) {
+  let best = null;
+  let bestD2 = ACCRETION_RANGE_PX * ACCRETION_RANGE_PX;
+  for (const m of sim.macros) {
+    const dx = m.x - w.x;
+    const dy = m.y - w.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) { bestD2 = d2; best = m; }
+  }
+  return best;
+}
+
+function spawnAccretionFeeder(w) {
+  const target = pickAccretionTarget(w);
+  if (!target) return;
+  const dx = target.x - w.x;
+  const dy = target.y - w.y;
+  const d = Math.hypot(dx, dy) || 1;
+  sim.spawnParticleWithVelocity(
+    w.x, w.y,
+    (dx / d) * ACCRETION_FEEDER_SPEED,
+    (dy / d) * ACCRETION_FEEDER_SPEED,
+    { mass: 2, r: 1.8, hue: 200 + Math.random() * 20, feeder: true }
+  );
+  state.markInteraction(Date.now());
+}
+
+function fireCompressionPacket(w, chargeFraction) {
+  // Mass scales linearly with charge fraction, min 5 to prevent negative-feel
+  // micro-shots. At full charge the mass-25 packet has a meaningful merge tax
+  // ceiling (32.33 * 25 = 808) — still slower than an emitter, but no era 3+
+  // player needs to wait the calibration window.
+  const cfg = INDUCER_MODES.compression;
+  const mass = Math.max(5, Math.round(cfg.packetMass * chargeFraction));
+  const angle = Math.random() * Math.PI * 2;
+  const speed = Math.random() * 4 + 1.0;
+  sim.spawnParticleWithVelocity(
+    w.x, w.y,
+    Math.cos(angle) * speed,
+    Math.sin(angle) * speed,
+    { mass, r: 3.0, hue: 280 + Math.random() * 30 }
+  );
+  // Charged shots pay back +1 Potential like a tap so the mode doesn't
+  // strictly underperform Field for income at the same rate.
+  state.potential += 1;
+  state.markInteraction(Date.now());
+  renderer.addRipple(w.x, w.y);
+}
+
+function spawnAtScreen(sx, sy) {
+  const w = screenToClampedWorld(sx, sy);
+  const mode = state.currentInducerMode();
+  switch (mode.id) {
+    case 'compression':
+      // Spawning happens on release (endHold), not on each tick. Swallow
+      // any non-charge spawn requests routed here.
+      return;
+    case 'accretion':
+      spawnAccretionFeeder(w);
+      return;
+    case 'resonance':
+      spawnFieldOrResonance(w, mode.packetMass);
+      return;
+    case 'field':
+    default:
+      spawnFieldOrResonance(w, mode.packetMass);
+      return;
+  }
 }
 
 function currentSpawnInterval() {
@@ -376,12 +494,28 @@ function currentSpawnInterval() {
   return 1000 / hz;
 }
 
+// Inducer mode-specific cadences:
+//   field/resonance : currentSpawnInterval ramp (9->22 Hz)
+//   compression     : no per-tick spawn — charge accumulates instead
+//   accretion       : steady 8 Hz beam
 function tickHold() {
   if (!holding || placementMode) return;
   const now = performance.now();
-  if (now - lastSpawnAt >= currentSpawnInterval()) {
-    spawnAtScreen(screenPos.x, screenPos.y);
-    lastSpawnAt = now;
+  const mode = state.currentInducerMode();
+  if (mode.id === 'compression') {
+    // Build charge against wall-clock seconds. Cap at chargeTimeS.
+    const heldS = (now - holdStartAt) / 1000;
+    state.compressionCharge = Math.min(mode.chargeTimeS, heldS);
+  } else if (mode.id === 'accretion') {
+    if (now - lastSpawnAt >= 1000 / 8) {
+      spawnAtScreen(screenPos.x, screenPos.y);
+      lastSpawnAt = now;
+    }
+  } else {
+    if (now - lastSpawnAt >= currentSpawnInterval()) {
+      spawnAtScreen(screenPos.x, screenPos.y);
+      lastSpawnAt = now;
+    }
   }
   requestAnimationFrame(tickHold);
 }
@@ -963,6 +1097,18 @@ function endHold(e) {
     pendingPinStart = null;
   }
   clearLongPress();
+  // v0.5: Compression Lens fires on release, scaled by accumulated charge.
+  // Sub-threshold charges fizzle (no spawn, no Potential cost) — gives the
+  // mode a clear minimum commitment.
+  if (state.inducerMode === 'compression' && holding) {
+    const cfg = INDUCER_MODES.compression;
+    const frac = Math.min(1, state.compressionCharge / cfg.chargeTimeS);
+    if (frac >= COMPRESSION_MIN_FRACTION) {
+      const w = screenToClampedWorld(screenPos.x, screenPos.y);
+      fireCompressionPacket(w, frac);
+    }
+    state.compressionCharge = 0;
+  }
   holding = false;
   if (e && e.pointerId !== undefined && canvas.hasPointerCapture?.(e.pointerId)) {
     canvas.releasePointerCapture(e.pointerId);
@@ -1214,6 +1360,7 @@ function frame(now) {
   renderer.render(sim, state, ui);
   ui.render(state);
   ui.updateTools?.();
+  ui.renderInducerModes?.(ui.getInducerContext());
   resolveInspector();
   resolveEmitterInspector();
   ui.renderCatalog(sim, inspectorPinId, MACRO_CRADLE_THRESHOLD, emitterPinId);

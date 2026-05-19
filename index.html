@@ -83,15 +83,36 @@
 
       <div id="hud-instruments" class="panel">
         <div class="unlocks-title">Instruments</div>
-        <ul id="instruments-list"></ul>
-        <div class="instruments-tools" hidden>
-          <div class="instruments-tools-header">Tools</div>
-          <button type="button" id="emitter-deploy-btn" class="instruments-tool" aria-pressed="false">
-            <span class="tool-glyph">◉</span>
-            <span class="tool-label">Deploy Emitter</span>
-            <span class="tool-cost" id="emitter-deploy-cost"></span>
+        <div class="catalog-section instruments-section" data-section="sensors">
+          <button class="catalog-section-header" type="button">
+            <span class="catalog-chevron">&#x25BE;</span>
+            <span class="catalog-section-label">Sensors</span>
+            <span class="catalog-section-count">0</span>
           </button>
-          <div class="instruments-tools-readout" id="emitter-readout"></div>
+          <ul id="instruments-list" class="catalog-section-list instruments-section-list"></ul>
+        </div>
+        <div class="catalog-section instruments-section" data-section="upgrades" hidden>
+          <button class="catalog-section-header" type="button">
+            <span class="catalog-chevron">&#x25BE;</span>
+            <span class="catalog-section-label">Upgrades</span>
+            <span class="catalog-section-count">0</span>
+          </button>
+          <ul id="inducer-modes-list" class="catalog-section-list instruments-section-list"></ul>
+        </div>
+        <div class="catalog-section instruments-section" data-section="tools" hidden>
+          <button class="catalog-section-header" type="button">
+            <span class="catalog-chevron">&#x25BE;</span>
+            <span class="catalog-section-label">Tools</span>
+            <span class="catalog-section-count">0</span>
+          </button>
+          <div class="instruments-tools" hidden>
+            <button type="button" id="emitter-deploy-btn" class="instruments-tool" aria-pressed="false">
+              <span class="tool-glyph">&#x25C9;</span>
+              <span class="tool-label">Deploy Emitter</span>
+              <span class="tool-cost" id="emitter-deploy-cost"></span>
+            </button>
+            <div class="instruments-tools-readout" id="emitter-readout"></div>
+          </div>
         </div>
       </div>
     </div>

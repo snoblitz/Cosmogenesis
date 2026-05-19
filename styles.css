@@ -1954,3 +1954,111 @@ body {
   #discovery-banner { top: 50%; padding: 12px 18px; }
   #discovery-banner .era-title { font-size: 15px; }
 }
+
+/* v0.5: Instruments panel subsections. Reuses the catalog-section layout
+   for the chevron / label / count header, but the section list inside is
+   the instruments list (lenses, modes, tools) rather than catalog rows.
+   Override the catalog-specific scrolling + padding so the instruments
+   sections feel native to their panel. */
+#hud-instruments .catalog-section {
+  margin-top: 6px;
+  pointer-events: auto;
+}
+#hud-instruments .catalog-section-header {
+  padding: 4px 0;
+  pointer-events: auto;
+}
+#hud-instruments .catalog-section-list {
+  list-style: none;
+  margin: 4px 0 0 0;
+  padding: 0;
+  max-height: none;
+  overflow: visible;
+}
+#hud-instruments .catalog-section[data-section="tools"] .instruments-tools {
+  border-top: none;
+  padding-top: 4px;
+  margin-top: 4px;
+}
+
+/* Inducer mode buttons live in the Upgrades section. Each row is one mode.
+   Three states are styled: locked (pre-era), available (era reached but
+   not purchased), unlocked (selectable). The currently-active mode gets
+   the "is-active" treatment matching .instruments-tool[aria-pressed]. */
+#inducer-modes-list li.inducer-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  margin: 3px 0;
+  border: 1px solid rgba(159, 184, 255, 0.18);
+  border-radius: 6px;
+  color: rgba(190, 210, 240, 0.85);
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+#inducer-modes-list li.inducer-mode:hover:not(.is-locked) {
+  background: rgba(184, 164, 255, 0.06);
+  border-color: rgba(184, 164, 255, 0.35);
+  color: rgba(220, 235, 255, 1);
+}
+#inducer-modes-list li.inducer-mode.is-active {
+  background: rgba(184, 164, 255, 0.18);
+  border-color: rgba(184, 164, 255, 0.55);
+  color: rgba(230, 240, 255, 1);
+}
+#inducer-modes-list li.inducer-mode.is-locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+#inducer-modes-list li.inducer-mode.is-available {
+  border-color: rgba(255, 215, 110, 0.45);
+  color: rgba(255, 230, 170, 0.95);
+}
+#inducer-modes-list li.inducer-mode.is-available:hover {
+  background: rgba(255, 215, 110, 0.08);
+  border-color: rgba(255, 215, 110, 0.7);
+}
+#inducer-modes-list .im-glyph {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 13px;
+}
+#inducer-modes-list .im-label {
+  flex: 1;
+  text-align: left;
+}
+#inducer-modes-list .im-meta {
+  margin-left: auto;
+  opacity: 0.7;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Calibration countdown badge on emitter rows in the Catalog "Deployed"
+   section. Pulses subtly until calibration ends; turns red as the timer
+   nears zero so the player feels the suspense. */
+.cat-emitter .cat-calibration {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 215, 110, 0.12);
+  color: rgba(255, 230, 170, 0.95);
+  border: 1px solid rgba(255, 215, 110, 0.4);
+  animation: cal-pulse 1.4s ease-in-out infinite;
+}
+.cat-emitter .cat-calibration[data-urgent="true"] {
+  background: rgba(255, 110, 110, 0.16);
+  color: rgba(255, 190, 190, 1);
+  border-color: rgba(255, 110, 110, 0.55);
+}
+@keyframes cal-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 0.4; }
+}
