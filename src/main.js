@@ -463,6 +463,8 @@ function fireCompressionPacket(w, chargeFraction) {
   state.potential += 1;
   state.markInteraction(Date.now());
   renderer.addRipple(w.x, w.y);
+  // Visual punch on release so the player sees the lens fire.
+  renderer.addInducerFlash?.(screenPos.x, screenPos.y, 0.6 + chargeFraction * 1.0);
 }
 
 function spawnAtScreen(sx, sy) {
@@ -1357,6 +1359,24 @@ function frame(now) {
   sim.tick(dt);
   state.update(sim, renderer, dt);
   updateSmartTracking(dt);
+
+  // Push current Inducer mode + per-mode data into the renderer so the
+  // cursor overlay reflects which tool is armed. Accretion needs a target
+  // resolved in world space; pickAccretionTarget already handles the
+  // "nothing in range" case by returning null.
+  if (renderer.setInducerCursor) {
+    const modeId = state.inducerMode || 'field';
+    const inducerOpts = { holding };
+    if (modeId === 'compression') {
+      const cfg = INDUCER_MODES.compression;
+      inducerOpts.charge = holding ? Math.min(1, state.compressionCharge / cfg.chargeTimeS) : 0;
+    } else if (modeId === 'accretion') {
+      const wpos = screenToClampedWorld(screenPos.x, screenPos.y);
+      inducerOpts.target = pickAccretionTarget(wpos);
+    }
+    renderer.setInducerCursor(modeId, inducerOpts);
+  }
+
   renderer.render(sim, state, ui);
   ui.render(state);
   ui.updateTools?.();

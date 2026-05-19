@@ -12,7 +12,7 @@ export const MACRO_CRADLE_THRESHOLD = 500; // mass at which a macro is a "Cradle
 export const STAR_IGNITION_THRESHOLD = 1500;
 export const EMITTER_RATE_HZ = 0.2;       // v0.5: slowed from 0.5 → one emission per 5s. Singles slow-burn to ignition; multiples buy speed.
 export const EMITTER_PARTICLE_MASS = 60;
-export const EMITTER_ERA_GATE = 3;        // earliest era index that allows deploy
+export const EMITTER_ERA_GATE = 4;        // earliest era index that allows deploy
 // v0.5: calibration phase before an emitter starts emitting. 10s visible
 // countdown in the deployables list. At the end of the countdown, the
 // emitter either stabilizes OR catastrophically duds (10% chance) and

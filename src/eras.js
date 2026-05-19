@@ -114,22 +114,33 @@ export function lensLabel(eraIndex) {
 export function evaluateEra(state, sim) {
   const i = state.eraIndex;
 
+  // v0.5 pacing: thresholds raised so each era lasts long enough for the
+  // player to actually learn the tools that unlock with it. Tool gates were
+  // also pushed up so unlocks line up with the universe earning them.
+
   // 0 → 1 ("The Field Awakens")
   //   Meaningful potential has been added to the void.
-  if (i < 1 && sim.totalSpawned >= 40) return 1;
+  if (i < 1 && sim.totalSpawned >= 80) return 1;
 
   // 1 → 2 ("Matter Learns to Gather")
-  //   Enough particles for attraction to have visibly populated the field.
-  //   Merging is off in era 1, so this count only grows by spawning.
-  if (i < 2 && sim.particles.length >= 140) return 2;
+  //   The field is densely populated and the player has internalized the
+  //   Field inducer trickle. Roughly 60–90s of attentive spawning at the
+  //   default rate, faster if the player drags a paintbrush hold.
+  if (i < 2 && sim.particles.length >= 280) return 2;
 
   // 2 → 3 ("Structure Emerges")
-  //   At least one macro-object has naturally condensed.
-  if (i < 3 && sim.macros.length >= 1) return 3;
+  //   A macro has condensed AND the universe has been substantially seeded.
+  //   The totalSpawned gate prevents getting here purely by Resonance burst.
+  if (i < 3 && sim.macros.length >= 1 && sim.totalSpawned >= 500) return 3;
 
   // 3 → 4 ("The Cosmic Web")
-  //   Two or more structures exist; filaments can now connect them.
-  if (i < 4 && sim.macros.length >= 2) return 4;
+  //   Three or more structures AND the largest one has real mass. Stops the
+  //   player from accidentally web-eraing on three tiny macros that condensed
+  //   in the same second.
+  if (i < 4 && sim.macros.length >= 3) {
+    const maxMacroMass = sim.macros.reduce((m, x) => x.mass > m ? x.mass : m, 0);
+    if (maxMacroMass >= 200) return 4;
+  }
 
   // 4 → 5 ("First Light")
   //   At least one cradle has ignited into a star.

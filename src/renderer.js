@@ -102,6 +102,16 @@ export class Renderer {
     this._cursorScreenX = null;
     this._cursorScreenY = null;
 
+    // Inducer cursor overlay state. Mode + per-mode data (charge fraction
+    // for compression, target macro for accretion) is pushed each frame by
+    // main.js. Flashes are short-lived post-action effects (e.g. a
+    // Compression release pop) drawn in screen space.
+    this._inducerMode = 'field';
+    this._inducerCharge = 0;
+    this._inducerHolding = false;
+    this._inducerTarget = null;
+    this._inducerFlashes = [];
+
     // --- Cosmic Web (Era 4+) state ---
     // Tracks live filament connections between macro pairs so each new
     // connection animates a reveal sweep and triggers a one-time audio swell.
@@ -129,6 +139,27 @@ export class Renderer {
   clearCursor() {
     this._cursorScreenX = null;
     this._cursorScreenY = null;
+  }
+
+  // Inform the renderer which Inducer mode is active and any per-mode data
+  // it needs to draw a distinct cursor. Called every frame by main.js. The
+  // `target` for accretion is a macro-like {x, y} world coordinate (or null);
+  // we convert to screen space at draw time so it tracks camera motion.
+  setInducerCursor(modeId, opts = {}) {
+    this._inducerMode = modeId || 'field';
+    this._inducerCharge = Math.max(0, Math.min(1, opts.charge || 0));
+    this._inducerHolding = !!opts.holding;
+    this._inducerTarget = opts.target || null;
+  }
+
+  // Queue a one-shot cursor flash (e.g. Compression Lens release).
+  addInducerFlash(sx, sy, intensity = 1) {
+    this._inducerFlashes.push({
+      x: sx, y: sy,
+      born: performance.now(),
+      intensity: Math.max(0.2, Math.min(2, intensity))
+    });
+    if (this._inducerFlashes.length > 12) this._inducerFlashes.shift();
   }
 
   // Queue a tap-feedback ripple at the given world coordinate.
@@ -471,6 +502,14 @@ export class Renderer {
         this._drawTemperatureScale(W, H, a);
       }
     }
+
+    // Inducer cursor overlay (screen-space, draws on top of everything in
+    // the world layer so the player always knows which mode is armed).
+    // Suppressed while the player is in emitter placement mode — that has
+    // its own ghost glyph, and two overlays would be visually noisy.
+    if (!(ui && ui.placementMode)) {
+      this._drawInducerCursor(W, H);
+    }
   }
 
   _drawVisibleScan(W, H) {
@@ -672,6 +711,186 @@ export class Renderer {
       this._drawEmitterGlyph(ghost.x, ghost.y, z, { ghost: true, nowS });
     }
     ctx.restore();
+  }
+
+  // Inducer cursor overlay. Drawn in raw screen-space (DPR-aware) so the
+  // glyph size is consistent regardless of zoom. Each mode has a distinct
+  // silhouette so the player always knows which tool is armed:
+  //   field       small soft hum dot (unobtrusive default)
+  //   resonance   double ring, gently pulsing
+  //   compression growing charge ring that turns blue → white-hot at full
+  //   accretion   crosshair + tether line to current target macro
+  // Flashes (Compression release) fade out over ~360 ms.
+  _drawInducerCursor(W, H) {
+    const ctx = this.ctx;
+    const now = performance.now();
+
+    // Flashes first so the cursor renders crisply on top of any active flash.
+    if (this._inducerFlashes.length > 0) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'lighter';
+      const FLASH_MS = 360;
+      const remaining = [];
+      for (const f of this._inducerFlashes) {
+        const age = now - f.born;
+        if (age >= FLASH_MS) continue;
+        const k = 1 - age / FLASH_MS;            // 1 → 0
+        const r = (8 + 36 * (1 - k)) * this.dpr * f.intensity;
+        const a = 0.55 * k * k;
+        const grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
+        grad.addColorStop(0, `rgba(235, 245, 255, ${a})`);
+        grad.addColorStop(0.5, `rgba(180, 200, 255, ${a * 0.5})`);
+        grad.addColorStop(1, 'rgba(120, 150, 230, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        remaining.push(f);
+      }
+      this._inducerFlashes = remaining;
+      ctx.restore();
+    }
+
+    if (this._cursorScreenX == null || this._cursorScreenY == null) return;
+
+    const sx = this._cursorScreenX;
+    const sy = this._cursorScreenY;
+    const d = this.dpr;
+    const t = now * 0.001;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const mode = this._inducerMode || 'field';
+
+    if (mode === 'field') {
+      // Minimal: a 2px-ish soft hum dot. Default tool, shouldn't compete.
+      const pulse = 0.55 + 0.15 * Math.sin(t * 2.4);
+      ctx.fillStyle = `rgba(180, 200, 240, ${0.55 * pulse})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3 * d, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(200, 220, 255, ${0.35 * pulse})`;
+      ctx.lineWidth = 1 * d;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 6 * d, 0, Math.PI * 2);
+      ctx.stroke();
+
+    } else if (mode === 'resonance') {
+      // Two concentric rings with a slow hum. Reads as "an instrument is
+      // listening" rather than "a tool is poised".
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3.0);
+      ctx.strokeStyle = `rgba(196, 168, 255, ${0.75})`;
+      ctx.lineWidth = 1.5 * d;
+      ctx.beginPath();
+      ctx.arc(sx, sy, (7 + pulse * 1.5) * d, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(178, 196, 255, ${0.35 + 0.25 * pulse})`;
+      ctx.lineWidth = 1 * d;
+      ctx.beginPath();
+      ctx.arc(sx, sy, (13 + pulse * 3) * d, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(230, 220, 255, 0.85)';
+      ctx.beginPath();
+      ctx.arc(sx, sy, 1.6 * d, 0, Math.PI * 2);
+      ctx.fill();
+
+    } else if (mode === 'compression') {
+      // Charge ring grows from a small idle circle to a fully-loaded one,
+      // colored from blue (cold) to near-white (hot). A faint reference
+      // tick at the 20% mark shows the fizzle threshold.
+      const ch = this._inducerCharge;        // 0..1
+      const idleR = 6 * d;
+      const fullR = 22 * d;
+      const r = idleR + (fullR - idleR) * ch;
+      const hue = 220 - 200 * ch;             // 220 (blue) → 20 (red-white)
+      const sat = 80 - 60 * ch;
+      const light = 60 + 30 * ch;
+      ctx.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, 0.85)`;
+      ctx.lineWidth = (1.5 + 1.5 * ch) * d;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      // 20% fizzle threshold tick (faint, only when holding).
+      if (this._inducerHolding) {
+        const tickR = idleR + (fullR - idleR) * 0.20;
+        ctx.strokeStyle = 'rgba(255, 220, 160, 0.45)';
+        ctx.lineWidth = 1 * d;
+        ctx.beginPath();
+        ctx.arc(sx, sy, tickR, -Math.PI * 0.55, -Math.PI * 0.45);
+        ctx.stroke();
+      }
+      // Core dot brightens with charge.
+      ctx.fillStyle = `hsla(${hue}, ${sat}%, ${Math.min(95, light + 20)}%, ${0.65 + 0.3 * ch})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, (1.8 + 1.5 * ch) * d, 0, Math.PI * 2);
+      ctx.fill();
+      // At full charge, a halo bloom to signal "ready".
+      if (ch >= 0.999) {
+        const bloom = 0.4 + 0.2 * Math.sin(t * 8);
+        const grad = ctx.createRadialGradient(sx, sy, r * 0.6, sx, sy, r * 1.8);
+        grad.addColorStop(0, `rgba(255, 240, 220, ${bloom})`);
+        grad.addColorStop(1, 'rgba(255, 240, 220, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r * 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+    } else if (mode === 'accretion') {
+      // Crosshair at cursor, tether line to currently-targeted macro.
+      const tgt = this._inducerTarget;
+      if (tgt && Number.isFinite(tgt.x) && Number.isFinite(tgt.y)) {
+        const tgtScreen = this.worldToScreenInternal(tgt.x, tgt.y);
+        // Animated dashed line — feeders flowing from cursor into macro.
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 200, 140, 0.75)';
+        ctx.lineWidth = 1.4 * d;
+        ctx.setLineDash([6 * d, 4 * d]);
+        ctx.lineDashOffset = -(t * 28 * d) % (10 * d);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(tgtScreen.x, tgtScreen.y);
+        ctx.stroke();
+        ctx.restore();
+        // Target reticle.
+        ctx.strokeStyle = 'rgba(255, 220, 170, 0.85)';
+        ctx.lineWidth = 1.2 * d;
+        ctx.beginPath();
+        ctx.arc(tgtScreen.x, tgtScreen.y, 11 * d, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      // Cursor crosshair.
+      ctx.strokeStyle = 'rgba(255, 210, 160, 0.95)';
+      ctx.lineWidth = 1.4 * d;
+      const cR = 7 * d;
+      ctx.beginPath();
+      ctx.arc(sx, sy, cR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(sx - cR * 1.6, sy); ctx.lineTo(sx - cR * 0.6, sy);
+      ctx.moveTo(sx + cR * 0.6, sy); ctx.lineTo(sx + cR * 1.6, sy);
+      ctx.moveTo(sx, sy - cR * 1.6); ctx.lineTo(sx, sy - cR * 0.6);
+      ctx.moveTo(sx, sy + cR * 0.6); ctx.lineTo(sx, sy + cR * 1.6);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // Internal helper: world → screen in INTERNAL canvas pixels (DPR-scaled,
+  // matches _cursorScreenX/Y). worldToScreenCss divides by DPR for DOM
+  // panels; this variant skips that division.
+  worldToScreenInternal(wx, wy) {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    return {
+      x: (wx - this.cam.x) * this.zoom + cx,
+      y: (wy - this.cam.y) * this.zoom + cy
+    };
   }
 
   _drawStarAura(m, tSec, haloR) {

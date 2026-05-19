@@ -35,7 +35,7 @@ export const INDUCER_MODES = {
   field: {
     id: 'field',
     label: 'Field',
-    description: 'Default tap / hold trickle. Mass-1 packets.',
+    description: 'Default tap or hold. Each click drops a mass-1 particle and earns 1 Potential.',
     eraGate: 0,
     unlockCost: 0,
     packetMass: 1
@@ -43,26 +43,26 @@ export const INDUCER_MODES = {
   resonance: {
     id: 'resonance',
     label: 'Resonance Lens',
-    description: 'Drag-paint to spray mass-3 packets along the cursor path.',
-    eraGate: 1,
-    unlockCost: 50,
+    description: 'Drag to spray mass-3 packets along your cursor path. +1 Potential per packet.',
+    eraGate: 2,
+    unlockCost: 120,
     packetMass: 3
   },
   compression: {
     id: 'compression',
     label: 'Compression Lens',
-    description: 'Hold to charge a mass-25 packet; release to fire.',
-    eraGate: 3,
-    unlockCost: 500,
+    description: 'Hold to charge, release to fire one heavy packet (up to mass 25). Sub-20% charge fizzles.',
+    eraGate: 4,
+    unlockCost: 800,
     packetMass: 25,
     chargeTimeS: 1.5
   },
   accretion: {
     id: 'accretion',
     label: 'Accretion Stream',
-    description: 'Beam mass-2 feeders into a macro. Feeds without promoting.',
-    eraGate: 4,
-    unlockCost: 3000,
+    description: 'Beam mass-2 feeders directly into the nearest macro (within ~220px). No Potential earned.',
+    eraGate: 5,
+    unlockCost: 4500,
     packetMass: 2
   }
 };

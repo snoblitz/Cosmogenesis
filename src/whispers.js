@@ -53,6 +53,21 @@ export const WHISPERS = [
       (Date.now() - s.lastInteractionAt) > 90000
   },
   {
+    id: 'inducer-resonance',
+    message: 'The Resonance Lens holds. Drag your finger across the field — what you trace becomes substance.',
+    test: (s) => s.unlockedInducerModes && s.unlockedInducerModes.has && s.unlockedInducerModes.has('resonance')
+  },
+  {
+    id: 'inducer-compression',
+    message: 'Press and hold. Let the Compression Lens gather, then release a denser seed than your hand alone could offer.',
+    test: (s) => s.unlockedInducerModes && s.unlockedInducerModes.has && s.unlockedInducerModes.has('compression')
+  },
+  {
+    id: 'inducer-accretion',
+    message: 'Aim near a gravity well. The Accretion Stream feeds it directly — no Potential earned, but mass concentrated where you choose.',
+    test: (s) => s.unlockedInducerModes && s.unlockedInducerModes.has && s.unlockedInducerModes.has('accretion')
+  },
+  {
     id: 'first-light',
     message: 'The dark threshold has been crossed. What you see now is light itself.',
     test: (s) => s.eraIndex >= 5
