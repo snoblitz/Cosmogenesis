@@ -611,6 +611,18 @@ function recenterCamera() {
   // Era zoom + Smart Tracking resume on the next frame automatically.
 }
 
+// Smallest zoom that keeps the viewport entirely inside sim.bounds — below
+// this the seeded universe rectangle starts touching viewport edges and the
+// "invisible wall" becomes visible, breaking immersion. We add a small
+// margin so the dust ring never crowds the viewport edge either.
+function fitMinZoom() {
+  const W = sim.bounds?.w || canvas.width;
+  const H = sim.bounds?.h || canvas.height;
+  // marginFactor > 1 means viewport stays smaller than world by that factor.
+  const marginFactor = 1.06;
+  return Math.max(canvas.width / W, canvas.height / H) * marginFactor;
+}
+
 function userZoomAt(screenX, screenY, factor) {
   // Pre-First-Light eras keep the player in a small contemplative pocket
   // of the cosmos. Manual zoom is disabled; Smart Tracking owns the camera.
@@ -618,7 +630,9 @@ function userZoomAt(screenX, screenY, factor) {
   if (state.eraIndex < FIRST_LIGHT_ERA) return;
   if (!isFinite(factor) || factor <= 0) return;
   const eraZ = ERAS[state.eraIndex]?.zoom ?? 1.0;
-  const minZ = eraZ * 0.25;  // pull back up to 4x further than era default
+  // Floor: max of "4x pulled back from era default" and "world-edge fit"
+  // so the player can never see the seeded universe rectangle's edge.
+  const minZ = Math.max(eraZ * 0.25, fitMinZoom());
   const maxZ = eraZ * 6.0;   // zoom in up to 6x closer
   const cur = renderer.targetZoom;
   const newZ = Math.max(minZ, Math.min(maxZ, cur * factor));
@@ -1113,7 +1127,11 @@ function updateSmartTracking(dt) {
     canvas.width  / (2 * Math.max(1, reqHalfW)),
     canvas.height / (2 * Math.max(1, reqHalfH))
   );
-  const smartZ = Math.max(eraZ * SMART_TRACK_MIN_ZOOM_FRAC, Math.min(eraZ, fitZ));
+  const smartZ = Math.max(
+    eraZ * SMART_TRACK_MIN_ZOOM_FRAC,
+    Math.min(eraZ, fitZ),
+    fitMinZoom()                       // never zoom out past the world edge
+  );
   renderer.targetZoom = smartZ;
 
   // Clamp aim so the viewport stays inside the world bounds. Use the
